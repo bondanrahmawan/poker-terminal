@@ -15,6 +15,7 @@ class Game:
         self.community_cards = []
         self.big_blind = big_blind
         self.dealer_idx = 0
+        self.hand_count = 0  # Session hand counter
         self.logs = []
         self.live_output = live_output
 
@@ -63,7 +64,9 @@ class Game:
                 self.state = GameState.WAITING
 
     def _handle_deal(self):
+        self.hand_count += 1
         self.log("\n--- NEW HAND ---")
+        self.log(f"Hand #{self.hand_count}")
         self.deck.reset()
         self.community_cards = []
         self.pot_manager = PotManager()
@@ -85,6 +88,7 @@ class Game:
         sb_idx = (self.dealer_idx + 1) % n
         bb_idx = (self.dealer_idx + 2) % n
 
+        self.log(f"Hand #{self.hand_count} | Dealer button: P{self.dealer_idx + 1}")
         self.log("Turn order:")
         for i, p in enumerate(active_players):
             role = ""
