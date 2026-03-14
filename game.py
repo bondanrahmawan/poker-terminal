@@ -82,20 +82,16 @@ class Game:
 
         # Show turn order for the new hand
         n = len(self.players)
-        dealer_player = self.players[self.dealer_idx]
-        sb_player = self.players[(self.dealer_idx + 1) % n]
-        bb_player = self.players[(self.dealer_idx + 2) % n]
+        sb_idx = (self.dealer_idx + 1) % n
+        bb_idx = (self.dealer_idx + 2) % n
 
         self.log("Turn order:")
         for i, p in enumerate(active_players):
-            if p == dealer_player:
-                role = "[Dealer]"
-            elif p == sb_player:
+            role = ""
+            if i == sb_idx:
                 role = "[SB]"
-            elif p == bb_player:
+            elif i == bb_idx:
                 role = "[BB]"
-            else:
-                role = ""
             self.log(f"  {i + 1}. {p.name:<{self._NAME_W}} {role:<10} chips: {p.chips}")
 
         for p in active_players:
