@@ -28,7 +28,9 @@ class TerminalPlayer(Player):
             if choice in ['s', 'status']:
                 print("\n--- Player Status ---")
                 players_info = game_state.get('players_info', [])
-                for p_name, p_chips, p_active in players_info:
+                # Sort by chip count (descending)
+                sorted_players = sorted(players_info, key=lambda p: p[1], reverse=True)
+                for p_name, p_chips, p_active in sorted_players:
                     status_str = "Active" if p_active else "Folded/Out"
                     print(f"{p_name:<15} | Chips: {p_chips:<6} | Status: {status_str}")
                 print("---------------------\n")
