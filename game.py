@@ -88,12 +88,15 @@ class Game:
         sb_idx = (self.dealer_idx + 1) % n
         bb_idx = (self.dealer_idx + 2) % n
 
+        # Sort active players by chip count (descending)
+        sorted_players = sorted(active_players, key=lambda p: p.chips, reverse=True)
+
         self.log("Turn order:")
-        for i, p in enumerate(active_players):
+        for i, p in enumerate(sorted_players):
             role = ""
-            if i == sb_idx:
+            if active_players.index(p) == sb_idx:
                 role = "[SB]"
-            elif i == bb_idx:
+            elif active_players.index(p) == bb_idx:
                 role = "[BB]"
             self.log(f"  {i + 1}. {p.name:<{self._NAME_W}} {role:<10} chips: {p.chips}")
 
