@@ -88,7 +88,6 @@ class Game:
         sb_idx = (self.dealer_idx + 1) % n
         bb_idx = (self.dealer_idx + 2) % n
 
-        self.log(f"Hand #{self.hand_count} | Dealer button: P{self.dealer_idx + 1}")
         self.log("Turn order:")
         for i, p in enumerate(active_players):
             role = ""
