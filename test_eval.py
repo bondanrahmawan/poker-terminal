@@ -19,7 +19,7 @@ class TestHandEvaluator:
             Card(5, Suit.CLUBS),     # 5
             Card(3, Suit.SPADES),    # 3
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.HIGH_CARD
         assert score[1] == 14  # Ace kicker
 
@@ -32,7 +32,7 @@ class TestHandEvaluator:
             Card(5, Suit.CLUBS),
             Card(3, Suit.SPADES),
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.ONE_PAIR
         assert score[1] == 10  # Pair of 10s
 
@@ -45,7 +45,7 @@ class TestHandEvaluator:
             Card(8, Suit.CLUBS),     # 8
             Card(3, Suit.SPADES),    # 3
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.TWO_PAIR
         assert score[1] == 12  # Higher pair
         assert score[2] == 8   # Lower pair
@@ -59,7 +59,7 @@ class TestHandEvaluator:
             Card(5, Suit.CLUBS),
             Card(3, Suit.SPADES),
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.THREE_OF_A_KIND
         assert score[1] == 9
 
@@ -72,7 +72,7 @@ class TestHandEvaluator:
             Card(7, Suit.CLUBS),
             Card(6, Suit.SPADES),
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.STRAIGHT
         assert score[1] == 10  # Top card of straight
 
@@ -85,7 +85,7 @@ class TestHandEvaluator:
             Card(4, Suit.CLUBS),
             Card(5, Suit.SPADES),
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.STRAIGHT
         assert score[1] == 5  # Treated as 5-high straight
 
@@ -98,7 +98,7 @@ class TestHandEvaluator:
             Card(5, Suit.SPADES),
             Card(3, Suit.SPADES),
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.FLUSH
         assert score[1] == 14  # Ace high flush
 
@@ -111,7 +111,7 @@ class TestHandEvaluator:
             Card(4, Suit.CLUBS),
             Card(4, Suit.SPADES),
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.FULL_HOUSE
         assert score[1] == 10  # Triplet
         assert score[2] == 4   # Pair
@@ -125,7 +125,7 @@ class TestHandEvaluator:
             Card(7, Suit.CLUBS),
             Card(2, Suit.SPADES),
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.FOUR_OF_A_KIND
         assert score[1] == 7   # Quad rank
         assert score[2] == 2   # Kicker
@@ -139,7 +139,7 @@ class TestHandEvaluator:
             Card(7, Suit.SPADES),
             Card(6, Suit.SPADES),
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.STRAIGHT_FLUSH
         assert score[1] == 10
 
@@ -152,7 +152,7 @@ class TestHandEvaluator:
             Card(11, Suit.SPADES),  # Jack
             Card(10, Suit.SPADES),  # 10
         ]
-        score, hand = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.STRAIGHT_FLUSH
         assert score[1] == 14  # Ace high
 
@@ -207,31 +207,31 @@ class TestHandComparison:
 
     def test_higher_pair_wins(self):
         """Test that higher pair beats lower pair."""
-        # Player 1: Pair of Aces
+        # Player 1: Pair of Aces with kicker
         score1, _ = HandEvaluator.evaluate(
             [Card(14, Suit.SPADES), Card(14, Suit.HEARTS)],
-            [Card(2, Suit.DIAMONDS), Card(3, Suit.CLUBS), Card(4, Suit.SPADES), Card(5, Suit.HEARTS), Card(6, Suit.DIAMONDS)]
+            [Card(2, Suit.DIAMONDS), Card(3, Suit.CLUBS), Card(4, Suit.SPADES), Card(5, Suit.HEARTS), Card(7, Suit.DIAMONDS)]
         )
-        # Player 2: Pair of Kings
+        # Player 2: Pair of Kings with kicker
         score2, _ = HandEvaluator.evaluate(
             [Card(13, Suit.SPADES), Card(13, Suit.HEARTS)],
-            [Card(2, Suit.DIAMONDS), Card(3, Suit.CLUBS), Card(4, Suit.SPADES), Card(5, Suit.HEARTS), Card(6, Suit.DIAMONDS)]
+            [Card(2, Suit.DIAMONDS), Card(3, Suit.CLUBS), Card(4, Suit.SPADES), Card(5, Suit.HEARTS), Card(7, Suit.DIAMONDS)]
         )
-        assert score1 > score2
+        assert score1 > score2, f"Pair of Aces {score1} should beat pair of Kings {score2}"
 
     def test_kicker_decides_tie(self):
         """Test that kicker breaks ties in pair hands."""
         # Player 1: A-K (Ace pair, K kicker)
         score1, _ = HandEvaluator.evaluate(
             [Card(14, Suit.SPADES), Card(14, Suit.HEARTS), Card(13, Suit.DIAMONDS)],
-            [Card(2, Suit.CLUBS), Card(3, Suit.SPADES), Card(4, Suit.HEARTS), Card(5, Suit.DIAMONDS)]
+            [Card(2, Suit.CLUBS), Card(3, Suit.SPADES), Card(4, Suit.HEARTS), Card(6, Suit.DIAMONDS)]
         )
         # Player 2: A-Q (Ace pair, Q kicker)
         score2, _ = HandEvaluator.evaluate(
             [Card(14, Suit.CLUBS), Card(14, Suit.DIAMONDS), Card(12, Suit.HEARTS)],
-            [Card(2, Suit.SPADES), Card(3, Suit.HEARTS), Card(4, Suit.CLUBS), Card(5, Suit.SPADES)]
+            [Card(2, Suit.SPADES), Card(3, Suit.HEARTS), Card(4, Suit.CLUBS), Card(6, Suit.SPADES)]
         )
-        assert score1 > score2
+        assert score1 > score2, f"Ace pair with K kicker {score1} should beat Ace pair with Q kicker {score2}"
 
     def test_straight_flush_beats_four_of_a_kind(self):
         """Test hand ranking hierarchy."""
@@ -255,8 +255,8 @@ class TestEdgeCases:
         """Test that suits don't affect non-flush hands."""
         cards1 = [Card(10, Suit.SPADES), Card(10, Suit.HEARTS), Card(5, Suit.DIAMONDS), Card(4, Suit.CLUBS), Card(3, Suit.SPADES)]
         cards2 = [Card(10, Suit.CLUBS), Card(10, Suit.DIAMONDS), Card(5, Suit.SPADES), Card(4, Suit.HEARTS), Card(3, Suit.CLUBS)]
-        score1, _ = HandEvaluator.evaluate_5_cards(cards1)
-        score2, _ = HandEvaluator.evaluate_5_cards(cards2)
+        score1 = HandEvaluator.evaluate_5_cards(cards1)
+        score2 = HandEvaluator.evaluate_5_cards(cards2)
         assert score1 == score2
 
     def test_straight_wrap_not_valid(self):
@@ -268,7 +268,7 @@ class TestEdgeCases:
             Card(2, Suit.CLUBS),    # 2
             Card(3, Suit.SPADES),   # 3
         ]
-        score, _ = HandEvaluator.evaluate_5_cards(cards)
+        score = HandEvaluator.evaluate_5_cards(cards)
         assert score[0] == HandRank.HIGH_CARD  # Not a straight
 
 
