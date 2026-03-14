@@ -54,8 +54,7 @@ class TerminalPlayer(Player):
                         if amt >= min_raise + min_call and amt <= self.chips:
                             if amt == self.chips:
                                 return PlayerAction.ALL_IN, amt
-                            action = PlayerAction.RAISE if min_call > 0 else PlayerAction.RAISE # Or internal bet identifier
-                            return action, amt
+                            return PlayerAction.RAISE, amt
                         else:
                             print(f"Invalid amount. Must be between {min_raise + min_call} and {self.chips}.")
                     else:

@@ -105,12 +105,7 @@ class HandEvaluator:
         """
         all_cards = hole_cards + community_cards
         if len(all_cards) < 5:
-            # If we don't have 5 cards yet (e.g. preflop/flop logic without filling to 5),
-            # this would need a partial evaluator, but generally we only evaluate at showdown
-            # or pad with dummy logic for bots. 
-            # For this terminal game, full evaluation happens at showdown.
-            # We'll assume len(all_cards) >= 5, usually 7.
-            pass
+            raise ValueError(f"Need at least 5 cards to evaluate, got {len(all_cards)}")
             
         best_score = None
         best_hand = None

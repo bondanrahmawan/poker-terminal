@@ -1,4 +1,6 @@
-class GameState:
+from enum import Enum
+
+class GameState(Enum):
     WAITING = "WAITING"
     DEAL = "DEAL"
     PREFLOP = "PREFLOP"

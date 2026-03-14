@@ -1,4 +1,5 @@
 import random
+from typing import Tuple
 from player import Player, PlayerAction
 from evaluator import HandEvaluator
 
@@ -8,7 +9,7 @@ class BotPlayer(Player):
         # Value between 0.0 (very passive) and 1.0 (very aggressive)
         self.aggressiveness = aggressiveness
 
-    def get_action(self, game_state: dict) -> tuple[str, int]:
+    def get_action(self, game_state: dict) -> Tuple[PlayerAction, int]:
         """
         Simple bot logic.
         game_state expects:
@@ -17,23 +18,21 @@ class BotPlayer(Player):
         - pot_size: total size of the pot
         - community_cards: list of visible cards on the board
         """
-        
+
         min_call = game_state.get('min_call', 0)
         min_raise = game_state.get('min_raise', 0)
         community_cards = game_state.get('community_cards', [])
-        
-        score, _ = HandEvaluator.evaluate(self.hole_cards, community_cards)
-        hand_strength = score[0] if score else 0
-        
-        # Super simple logic:
-        # Pre-flop, check if hand has high cards
+
+        # Pre-flop: evaluate by hole card heuristic (not enough cards for evaluator)
         if len(community_cards) == 0:
             ranks = [c.rank for c in self.hole_cards]
-            if max(ranks) > 10 or abs(ranks[0] - ranks[1]) <= 1:
-                hand_strength = 2 # Treat like generic good starting hand
-        
+            hand_strength = 2 if (max(ranks) > 10 or abs(ranks[0] - ranks[1]) <= 1) else 1
+        else:
+            score, _ = HandEvaluator.evaluate(self.hole_cards, community_cards)
+            hand_strength = score[0] if score else 0
+
         rand_val = random.random()
-        
+
         # Must act logic
         if min_call == 0:
             # Check or bet

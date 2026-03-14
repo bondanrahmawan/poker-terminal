@@ -1,4 +1,5 @@
 import random
+from typing import List
 from card import Card, Suit, Rank
 
 class Deck:
@@ -12,15 +13,10 @@ class Deck:
     def shuffle(self):
         random.shuffle(self.cards)
 
-    def draw(self, count=1):
-        drawn = []
-        for _ in range(count):
-            if not self.cards:
-                raise ValueError("Deck is empty")
-            drawn.append(self.cards.pop())
-        # Return a single item if drawing 1, otherwise list
-        if count == 1:
-            return drawn[0]
+    def draw(self, count: int = 1) -> List[Card]:
+        if count > len(self.cards):
+            raise ValueError("Deck is empty")
+        drawn = [self.cards.pop() for _ in range(count)]
         return drawn
 
     def reset(self):

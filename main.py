@@ -25,9 +25,9 @@ def main():
     if big_blind_str.isdigit():
         big_blind = int(big_blind_str)
 
-    g = Game(big_blind=big_blind)
+    g = Game(big_blind=big_blind, live_output=True)
     g.add_player(TerminalPlayer("h1", player_name, starting_chips))
-    
+
     bot_names = ["Bot_Alice", "Bot_Bob", "Bot_Charlie", "Bot_Dave", "Bot_Eve", "Bot_Frank", "Bot_Grace"]
     for i in range(min(num_bots, len(bot_names))):
         g.add_player(BotPlayer(f"b{i}", bot_names[i], starting_chips))
@@ -35,13 +35,8 @@ def main():
     play_again = True
     while play_again:
         os.system('clear' if os.name == 'posix' else 'cls')
-        print(f"\n--- Starting new hand ---")
         g.start_game()
-        
-        for log in g.logs:
-            print(log)
-            
-        g.logs = [] # Clear logs for next hand
+        g.logs = []  # Clear logs for next hand
         
         active_players = [p for p in g.players if p.chips > 0]
         if len(active_players) <= 1:
