@@ -1,9 +1,9 @@
 from typing import List, Dict
-from state import GameState
-from deck import Deck
-from betting import BetManager, PotManager
-from player import Player, PlayerAction
-from evaluator import HandEvaluator, HandRank
+from core.state import GameState
+from core.deck import Deck
+from core.betting import BetManager, PotManager
+from core.player import Player, PlayerAction
+from core.evaluator import HandEvaluator, HandRank
 
 _NUM_BLIND_LEVELS = 10
 

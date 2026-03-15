@@ -6,7 +6,7 @@ pot-proportional raise sizing scaled by aggressiveness.
 """
 import random
 from typing import Tuple
-from player import PlayerAction
+from core.player import PlayerAction
 from strategies import BotStrategy, PlayerView, register
 from strategies.utils import estimate_equity, pot_odds, position_adjustment, calc_raise_amount
 

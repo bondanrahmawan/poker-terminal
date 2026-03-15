@@ -1,10 +1,10 @@
 """
 Comprehensive tests for HandEvaluator.
-Run with: pytest test_eval.py -v
+Run with: pytest tests/test_eval.py -v
 """
 import pytest
-from evaluator import HandEvaluator, HandRank
-from card import Card, Suit
+from core.evaluator import HandEvaluator, HandRank
+from core.card import Card, Suit
 
 
 class TestHandEvaluator:

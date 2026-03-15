@@ -1,6 +1,6 @@
 import random
 from typing import List
-from card import Card, Suit, Rank
+from core.card import Card, Suit, Rank
 
 class Deck:
     def __init__(self):

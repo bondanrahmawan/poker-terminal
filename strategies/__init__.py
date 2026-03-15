@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Type
-from card import Card
-from player import PlayerAction
+from core.card import Card
+from core.player import PlayerAction
 
 
 @dataclass(frozen=True)

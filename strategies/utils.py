@@ -3,8 +3,8 @@ Shared helpers for bot strategies.
 Import these in any strategy — do not duplicate them.
 """
 from typing import List
-from card import Card
-from evaluator import HandEvaluator
+from core.card import Card
+from core.evaluator import HandEvaluator
 
 # Estimated equity per hand rank (index = HandRank value 0..9)
 # 0 = unset, 1 = High Card, ..., 9 = Straight Flush / Royal Flush

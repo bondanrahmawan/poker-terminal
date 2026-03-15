@@ -1,5 +1,5 @@
 from typing import Tuple
-from player import Player, PlayerAction
+from core.player import Player, PlayerAction
 from strategies import BotStrategy, PlayerView
 from strategies.simple import SimpleStrategy
 

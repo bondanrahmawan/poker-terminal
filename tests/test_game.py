@@ -1,6 +1,6 @@
 """
 Component tests for Game logic - focused on specific implementation details.
-Run with: pytest test_game.py -v
+Run with: pytest tests/test_game.py -v
 
 This file tests:
 - Specific game mechanics and state changes
@@ -11,12 +11,12 @@ This file tests:
 E2E gameplay is tested in test_automated_play.py
 """
 import pytest
-from game import Game
-from bot import BotPlayer
-from player import Player, PlayerAction
-from card import Card, Suit, Rank
-from betting import BetManager, PotManager, Pot
-from state import GameState
+from core.game import Game
+from players.bot import BotPlayer
+from core.player import Player, PlayerAction
+from core.card import Card, Suit, Rank
+from core.betting import BetManager, PotManager, Pot
+from core.state import GameState
 from strategies.simple import SimpleStrategy
 
 
@@ -46,7 +46,7 @@ class TestGameInitialization:
         p2 = BotPlayer("p2", "Bob", 1000)
         g.add_player(p1)
         g.add_player(p2)
-        
+
         g.remove_player("p1")
         assert len(g.players) == 1
         assert g.players[0].name == "Bob"
@@ -74,7 +74,7 @@ class TestBlinds:
         # Find blind amounts in logs
         sb_line = [l for l in g.logs if "posts SB" in l][0]
         bb_line = [l for l in g.logs if "posts BB" in l][0]
-        
+
         assert "10" in sb_line  # SB = BB/2
         assert "20" in bb_line  # BB = big_blind
 
@@ -84,12 +84,12 @@ class TestBlinds:
         g.add_player(BotPlayer("p1", "Alice", 1000))
         g.add_player(BotPlayer("p2", "Bob", 1000))
         g.add_player(BotPlayer("p3", "Charlie", 1000))
-        
+
         # Hand 1: dealer=0 (Alice), SB=1 (Bob), BB=2 (Charlie)
         g.start_game()
         sb_line_1 = [l for l in g.logs if "posts SB" in l][0]
         assert "Bob" in sb_line_1
-        
+
         # Hand 2: dealer=1 (Bob), SB=2 (Charlie), BB=0 (Alice)
         g.logs = []
         g.start_game()
@@ -133,7 +133,7 @@ class TestDealing:
 
         # Count community card deals (>> [cards] pattern)
         community_lines = [l for l in g.logs if ">>" in l and "[" in l and "]" in l]
-        
+
         # Should have at least flop (first community card deal)
         assert len(community_lines) >= 1
 
@@ -146,12 +146,12 @@ class TestBetting:
         g = Game(big_blind=20)
         g.add_player(BotPlayer("p1", "Alice", 1000))
         g.add_player(BotPlayer("p2", "Bob", 1000))
-        
+
         initial_pot = g.pot_manager.total_pot()
         assert initial_pot == 0
-        
+
         g.start_game()
-        
+
         final_pot = g.pot_manager.total_pot()
         assert final_pot >= 30  # At least SB (10) + BB (20)
 
@@ -171,11 +171,11 @@ class TestBetting:
         g = Game(big_blind=20)
         g.add_player(BotPlayer("p1", "Alice", 1000))
         g.add_player(BotPlayer("p2", "Bob", 1000))
-        
+
         p1_initial = g.players[0].chips
         g.start_game()
         p1_final = g.players[0].chips
-        
+
         # Player should have different chips after posting blind or betting
         assert p1_initial != p1_final or "posts BB" in str(g.logs)
 
@@ -218,12 +218,12 @@ class TestDealerButton:
         g.add_player(BotPlayer("p3", "Charlie", 1000, SimpleStrategy(aggressiveness=0.3)))
 
         initial_dealer = g.dealer_idx
-        
+
         # Play 3 hands - dealer should cycle through all positions
         for i in range(3):
             g.logs = []
             g.start_game()
-        
+
         # After 3 hands, dealer should be back at initial position
         assert g.dealer_idx == initial_dealer
 
@@ -236,13 +236,13 @@ class TestDealerButton:
         g.add_player(p1)
         g.add_player(p2)
         g.add_player(p3)
-        
+
         # Bust out player 2
         p2.chips = 0
         p2.reset_for_hand()
-        
+
         g.start_game()
-        
+
         # Dealer should skip busted player
         assert g.dealer_idx != 1 or g.players[1].chips > 0
 
@@ -282,7 +282,7 @@ class TestPlayerState:
         p1 = BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3))
         p1.chips = 0
         p1.reset_for_hand()
-        
+
         assert p1.is_active == False
 
     def test_active_player_can_act(self):
@@ -290,7 +290,7 @@ class TestPlayerState:
         g = Game(big_blind=20)
         p1 = BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3))
         p1.reset_for_hand()
-        
+
         assert p1.can_act() == True
 
     def test_all_in_player_cannot_act(self):
@@ -298,7 +298,7 @@ class TestPlayerState:
         g = Game(big_blind=20)
         p1 = BotPlayer("p1", "Alice", 100, SimpleStrategy(aggressiveness=0.3))
         p1.is_all_in = True
-        
+
         assert p1.can_act() == False
 
     def test_folded_player_cannot_act(self):
@@ -306,7 +306,7 @@ class TestPlayerState:
         g = Game(big_blind=20)
         p1 = BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3))
         p1.is_active = False
-        
+
         assert p1.can_act() == False
 
 
@@ -322,7 +322,7 @@ class TestBetManager:
         """Test bet processing updates state."""
         bm = BetManager(big_blind=20)
         bm.process_bet("p1", 20)  # BB
-        
+
         assert bm.current_bet == 20
         assert bm.get_amount_to_call("p2") == 20
 
@@ -331,7 +331,7 @@ class TestBetManager:
         bm = BetManager(big_blind=20)
         bm.process_bet("p1", 20)  # BB
         bm.process_bet("p2", 60, is_raise=True)  # Raise to 60
-        
+
         assert bm.min_raise == 40  # Raise amount = 60 - 20
 
     def test_get_amount_to_call(self):
@@ -339,7 +339,7 @@ class TestBetManager:
         bm = BetManager(big_blind=20)
         bm.process_bet("p1", 20)  # BB
         bm.process_bet("p2", 60, is_raise=True)  # Raise to 60
-        
+
         # p1 needs to call 40 more (60 - 20)
         assert bm.get_amount_to_call("p1") == 40
 
@@ -348,7 +348,7 @@ class TestBetManager:
         bm = BetManager(big_blind=20)
         bm.process_bet("p1", 20)
         bm.reset_round()
-        
+
         assert bm.current_bet == 0
         assert bm.min_raise == 20
 
@@ -361,7 +361,7 @@ class TestPotManager:
         pm = PotManager()
         pm.add_contribution("p1", 20)
         pm.add_contribution("p2", 20)
-        
+
         assert pm.contributions["p1"] == 20
         assert pm.contributions["p2"] == 20
 
@@ -370,7 +370,7 @@ class TestPotManager:
         pm = PotManager()
         pm.add_contribution("p1", 20)
         pm.add_contribution("p2", 30)
-        
+
         assert pm.total_pot() == 50
 
     def test_pot_calculation_single_winner(self):
@@ -379,7 +379,7 @@ class TestPotManager:
         pm.add_contribution("p1", 20)
         pm.add_contribution("p2", 20)
         pm.calculate_pots(["p1"])  # Only p1 eligible
-        
+
         assert len(pm.pots) == 1
         assert pm.pots[0].amount == 40
         assert "p1" in pm.pots[0].eligible_players
@@ -391,7 +391,7 @@ class TestPotManager:
         pm.add_contribution("p2", 100)  # Covers
         pm.add_contribution("p3", 100)  # Covers
         pm.calculate_pots(["p1", "p2", "p3"])
-        
+
         # Should have main pot (50*3=150) and side pot (50*2=100)
         assert len(pm.pots) == 2
         assert pm.pots[0].amount == 150  # Main pot
@@ -411,13 +411,13 @@ class TestGameState:
         g = Game(big_blind=20)
         g.add_player(BotPlayer("p1", "Alice", 1000))
         g.add_player(BotPlayer("p2", "Bob", 1000))
-        
+
         # Before start, state is WAITING
         assert g.state == GameState.WAITING
-        
+
         # start_game() runs complete hand, returns to WAITING
         g.start_game()
-        
+
         # After hand completes, state returns to WAITING
         assert g.state == GameState.WAITING
 
@@ -427,7 +427,7 @@ class TestGameState:
         g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3)))
         g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
         g.start_game()
-        
+
         # Hand should complete and return to WAITING
         assert g.state == GameState.WAITING
 

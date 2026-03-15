@@ -1,8 +1,7 @@
 import os
-from game import Game
-from terminal import TerminalPlayer
-from bot import BotPlayer
-from strategies.simple import SimpleStrategy
+from core.game import Game
+from players.terminal import TerminalPlayer
+from players.roster import create_bots, MAX_BOTS
 
 def main():
     print("Welcome to Poker Terminal Game!")
@@ -38,23 +37,8 @@ def main():
     g = Game(big_blind=big_blind, hands_per_level=hands_per_level, ante=enable_ante, live_output=True)
     g.add_player(TerminalPlayer("h1", player_name, starting_chips))
 
-    bot_names = ["Bot_Alice", "Bot_Bob", "Bot_Charlie", "Bot_Dave", "Bot_Eve",
-                 "Bot_Frank", "Bot_Grace", "Bot_Hank", "Bot_Iris", "Bot_Jack"]
-    # Varied personalities — cycles through archetypes for a diverse table
-    strategy_pool = [
-        SimpleStrategy(aggressiveness=0.6),
-        SimpleStrategy(aggressiveness=0.3),
-        SimpleStrategy(aggressiveness=0.7),
-        SimpleStrategy(aggressiveness=0.4),
-        SimpleStrategy(aggressiveness=0.5),
-        SimpleStrategy(aggressiveness=0.8),
-        SimpleStrategy(aggressiveness=0.35),
-        SimpleStrategy(aggressiveness=0.65),
-        SimpleStrategy(aggressiveness=0.45),
-        SimpleStrategy(aggressiveness=0.55),
-    ]
-    for i in range(num_bots):
-        g.add_player(BotPlayer(f"b{i}", bot_names[i], starting_chips, strategy_pool[i]))
+    for bot in create_bots(num_bots, starting_chips):
+        g.add_player(bot)
 
     human = next(p for p in g.players if isinstance(p, TerminalPlayer))
 

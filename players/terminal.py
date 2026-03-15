@@ -1,6 +1,6 @@
 from typing import Tuple
-from player import Player, PlayerAction
-from card import Suit
+from core.player import Player, PlayerAction
+from core.card import Suit
 
 _RED   = '\033[91m'
 _RESET = '\033[0m'

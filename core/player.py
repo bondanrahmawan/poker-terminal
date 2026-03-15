@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import List, Tuple
-from card import Card
+from core.card import Card
 
 class PlayerAction(Enum):
     FOLD = "fold"
