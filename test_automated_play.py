@@ -16,6 +16,7 @@ from player import Player, PlayerAction
 from card import Card, Suit, Rank
 from evaluator import HandEvaluator, HandRank
 from betting import PotManager
+from strategies.simple import SimpleStrategy
 
 
 class TestAutomatedSingleHand:
@@ -26,9 +27,9 @@ class TestAutomatedSingleHand:
         random.seed(42)  # Reproducible results
         
         g = Game(big_blind=20, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.5))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.5))
-        g.add_player(BotPlayer("p3", "Charlie", 1000, aggressiveness=0.5))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.5)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.5)))
+        g.add_player(BotPlayer("p3", "Charlie", 1000, SimpleStrategy(aggressiveness=0.5)))
         
         initial_chips = sum(p.chips for p in g.players)
         
@@ -56,7 +57,7 @@ class TestAutomatedSingleHand:
         
         g = Game(big_blind=20, live_output=False)
         for i in range(6):
-            g.add_player(BotPlayer(f"p{i}", f"Player{i}", 1000, aggressiveness=0.4 + i * 0.1))
+            g.add_player(BotPlayer(f"p{i}", f"Player{i}", 1000, SimpleStrategy(aggressiveness=0.4 + i * 0.1)))
         
         initial_chips = sum(p.chips for p in g.players)
         g.start_game()
@@ -74,9 +75,9 @@ class TestAutomatedMultipleHands:
         random.seed(456)
         
         g = Game(big_blind=20, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.5))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.5))
-        g.add_player(BotPlayer("p3", "Charlie", 1000, aggressiveness=0.5))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.5)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.5)))
+        g.add_player(BotPlayer("p3", "Charlie", 1000, SimpleStrategy(aggressiveness=0.5)))
         
         initial_dealer = g.dealer_idx
         hands_completed = 0
@@ -100,9 +101,9 @@ class TestAutomatedMultipleHands:
         
         g = Game(big_blind=50, live_output=False)
         # Give players small stacks to increase bust probability
-        g.add_player(BotPlayer("p1", "Alice", 200, aggressiveness=0.7))
-        g.add_player(BotPlayer("p2", "Bob", 200, aggressiveness=0.7))
-        g.add_player(BotPlayer("p3", "Charlie", 200, aggressiveness=0.7))
+        g.add_player(BotPlayer("p1", "Alice", 200, SimpleStrategy(aggressiveness=0.7)))
+        g.add_player(BotPlayer("p2", "Bob", 200, SimpleStrategy(aggressiveness=0.7)))
+        g.add_player(BotPlayer("p3", "Charlie", 200, SimpleStrategy(aggressiveness=0.7)))
         
         active_players_start = len([p for p in g.players if p.chips > 0])
         
@@ -125,8 +126,8 @@ class TestGameFlowValidation:
         random.seed(111)
         
         g = Game(big_blind=20, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.3))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.3))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
         
         g.start_game()
         
@@ -143,9 +144,9 @@ class TestGameFlowValidation:
         
         g = Game(big_blind=20, live_output=False)
         # Use more passive players to encourage calling and seeing flop
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.2))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.2))
-        g.add_player(BotPlayer("p3", "Charlie", 1000, aggressiveness=0.2))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.2)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.2)))
+        g.add_player(BotPlayer("p3", "Charlie", 1000, SimpleStrategy(aggressiveness=0.2)))
         
         g.start_game()
         
@@ -167,8 +168,8 @@ class TestGameFlowValidation:
         random.seed(333)
         
         g = Game(big_blind=20, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.3))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.3))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
         
         g.start_game()
         
@@ -187,8 +188,8 @@ class TestGameFlowValidation:
         random.seed(444)
         
         g = Game(big_blind=20, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.3))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.3))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
         
         initial_pot = g.pot_manager.total_pot()
         g.start_game()
@@ -206,8 +207,8 @@ class TestEdgeCaseScenarios:
         
         g = Game(big_blind=20, live_output=False)
         # Short stacks to encourage all-in
-        g.add_player(BotPlayer("p1", "Alice", 50, aggressiveness=0.9))
-        g.add_player(BotPlayer("p2", "Bob", 50, aggressiveness=0.9))
+        g.add_player(BotPlayer("p1", "Alice", 50, SimpleStrategy(aggressiveness=0.9)))
+        g.add_player(BotPlayer("p2", "Bob", 50, SimpleStrategy(aggressiveness=0.9)))
         
         initial_chips = sum(p.chips for p in g.players)
         g.start_game()
@@ -220,8 +221,8 @@ class TestEdgeCaseScenarios:
         random.seed(666)
         
         g = Game(big_blind=20, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.1))  # Very passive
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.9))   # Very aggressive
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.1)))  # Very passive
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.9)))   # Very aggressive
         
         g.start_game()
         
@@ -233,8 +234,8 @@ class TestEdgeCaseScenarios:
         random.seed(777)
         
         g = Game(big_blind=50, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 25, aggressiveness=0.5))  # Less than BB
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.5))
+        g.add_player(BotPlayer("p1", "Alice", 25, SimpleStrategy(aggressiveness=0.5)))  # Less than BB
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.5)))
         
         g.start_game()
         
@@ -246,7 +247,7 @@ class TestEdgeCaseScenarios:
         
         g = Game(big_blind=20, live_output=False)
         for i in range(8):
-            g.add_player(BotPlayer(f"p{i}", f"Player{i}", 1000, aggressiveness=0.3 + i * 0.05))
+            g.add_player(BotPlayer(f"p{i}", f"Player{i}", 1000, SimpleStrategy(aggressiveness=0.3 + i * 0.05)))
         
         initial_chips = sum(p.chips for p in g.players)
         g.start_game()
@@ -263,8 +264,8 @@ class TestHandEvaluationAccuracy:
         random.seed(999)
         
         g = Game(big_blind=20, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.3))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.3))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
         
         g.start_game()
         
@@ -286,9 +287,9 @@ class TestHandEvaluationAccuracy:
         
         g = Game(big_blind=20, live_output=False)
         # Use very passive players to encourage seeing showdown
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.15))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.15))
-        g.add_player(BotPlayer("p3", "Charlie", 1000, aggressiveness=0.15))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.15)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.15)))
+        g.add_player(BotPlayer("p3", "Charlie", 1000, SimpleStrategy(aggressiveness=0.15)))
         
         g.start_game()
         
@@ -316,21 +317,24 @@ class TestStressScenarios:
         random.seed(1212)
         
         g = Game(big_blind=20, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 5000, aggressiveness=0.4))
-        g.add_player(BotPlayer("p2", "Bob", 5000, aggressiveness=0.5))
-        g.add_player(BotPlayer("p3", "Charlie", 5000, aggressiveness=0.6))
+        g.add_player(BotPlayer("p1", "Alice", 5000, SimpleStrategy(aggressiveness=0.4)))
+        g.add_player(BotPlayer("p2", "Bob", 5000, SimpleStrategy(aggressiveness=0.5)))
+        g.add_player(BotPlayer("p3", "Charlie", 5000, SimpleStrategy(aggressiveness=0.6)))
         
         initial_chips = sum(p.chips for p in g.players)
         errors = []
         
         for hand_num in range(50):
+            active = [p for p in g.players if p.chips > 0]
+            if len(active) <= 1:
+                break  # tournament over — valid termination
             try:
                 g.logs = []
                 g.start_game()
-                
-                if "Hand complete." not in g.logs[-1]:
-                    errors.append(f"Hand {hand_num + 1}: Did not complete")
-                    
+                # Accept either normal completion or game-over (not enough players)
+                last = g.logs[-1] if g.logs else ""
+                if "Hand complete." not in last and "Not enough players" not in last:
+                    errors.append(f"Hand {hand_num + 1}: Unexpected final log: {last!r}")
             except Exception as e:
                 errors.append(f"Hand {hand_num + 1}: {str(e)}")
         
@@ -355,7 +359,7 @@ class TestStressScenarios:
         ]
         
         for pid, name, chips, agg in styles:
-            g.add_player(BotPlayer(pid, name, chips, aggressiveness=agg))
+            g.add_player(BotPlayer(pid, name, chips, SimpleStrategy(aggressiveness=agg)))
         
         initial_chips = sum(p.chips for p in g.players)
         
@@ -378,14 +382,14 @@ class TestDeterministicScenarios:
         # Play hand twice with same seed
         random.seed(seed)
         g1 = Game(big_blind=20, live_output=False)
-        g1.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.5))
-        g1.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.5))
+        g1.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.5)))
+        g1.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.5)))
         g1.start_game()
         
         random.seed(seed)
         g2 = Game(big_blind=20, live_output=False)
-        g2.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.5))
-        g2.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.5))
+        g2.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.5)))
+        g2.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.5)))
         g2.start_game()
         
         # Same actions should occur (same logs)
@@ -400,8 +404,8 @@ class TestChipTracking:
         random.seed(1414)
         
         g = Game(big_blind=20, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.3))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.3))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
         
         # Get initial chips
         p1_initial = g.players[0].chips
@@ -423,8 +427,8 @@ class TestChipTracking:
         random.seed(1515)
         
         g = Game(big_blind=20, live_output=False)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.3))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.3))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
         
         initial_chips = [p.chips for p in g.players]
         g.start_game()

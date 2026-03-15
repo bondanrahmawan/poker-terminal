@@ -17,6 +17,7 @@ from player import Player, PlayerAction
 from card import Card, Suit, Rank
 from betting import BetManager, PotManager, Pot
 from state import GameState
+from strategies.simple import SimpleStrategy
 
 
 class TestGameInitialization:
@@ -126,8 +127,8 @@ class TestDealing:
         """Test that each street deals correct number of cards."""
         g = Game(big_blind=20)
         # Passive players to ensure all streets are dealt
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.1))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.1))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.1)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.1)))
         g.start_game()
 
         # Count community card deals (>> [cards] pattern)
@@ -157,8 +158,8 @@ class TestBetting:
     def test_folded_player_is_inactive(self):
         """Test that folded players become inactive."""
         g = Game(big_blind=20)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.9))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.1))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.9)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.1)))
         g.start_game()
 
         # At least one player should remain active at end
@@ -186,9 +187,9 @@ class TestShowdown:
         """Test that showdown reveals cards when multiple players remain."""
         g = Game(big_blind=20)
         # Use passive bots to encourage seeing showdown
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.15))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.15))
-        g.add_player(BotPlayer("p3", "Charlie", 1000, aggressiveness=0.15))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.15)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.15)))
+        g.add_player(BotPlayer("p3", "Charlie", 1000, SimpleStrategy(aggressiveness=0.15)))
         g.start_game()
 
         # Check for card reveal in logs
@@ -198,8 +199,8 @@ class TestShowdown:
     def test_winner_announced(self):
         """Test that winner is announced in logs."""
         g = Game(big_blind=20)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.3))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.3))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
         g.start_game()
 
         winner_logs = [log for log in g.logs if "wins" in log and ">>" in log]
@@ -212,9 +213,9 @@ class TestDealerButton:
     def test_dealer_rotation_cycles(self):
         """Test that dealer rotation cycles through all players."""
         g = Game(big_blind=20)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.3))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.3))
-        g.add_player(BotPlayer("p3", "Charlie", 1000, aggressiveness=0.3))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
+        g.add_player(BotPlayer("p3", "Charlie", 1000, SimpleStrategy(aggressiveness=0.3)))
 
         initial_dealer = g.dealer_idx
         
@@ -229,9 +230,9 @@ class TestDealerButton:
     def test_dealer_skips_busted_players(self):
         """Test that dealer button skips players with 0 chips."""
         g = Game(big_blind=20)
-        p1 = BotPlayer("p1", "Alice", 1000, aggressiveness=0.3)
-        p2 = BotPlayer("p2", "Bob", 1000, aggressiveness=0.3)
-        p3 = BotPlayer("p3", "Charlie", 1000, aggressiveness=0.3)
+        p1 = BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3))
+        p2 = BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3))
+        p3 = BotPlayer("p3", "Charlie", 1000, SimpleStrategy(aggressiveness=0.3))
         g.add_player(p1)
         g.add_player(p2)
         g.add_player(p3)
@@ -252,8 +253,8 @@ class TestAllIn:
     def test_player_state_all_in(self):
         """Test that player state changes to all-in."""
         g = Game(big_blind=20)
-        g.add_player(BotPlayer("p1", "Alice", 50, aggressiveness=0.9))  # Short stack
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.3))
+        g.add_player(BotPlayer("p1", "Alice", 50, SimpleStrategy(aggressiveness=0.9)))  # Short stack
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
         g.start_game()
 
         # Check if any player went all-in
@@ -264,8 +265,8 @@ class TestAllIn:
         """Test that side pots are tracked when players go all-in."""
         g = Game(big_blind=20)
         # Short stack vs big stack - may create side pot
-        g.add_player(BotPlayer("p1", "Alice", 30, aggressiveness=0.9))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.9))
+        g.add_player(BotPlayer("p1", "Alice", 30, SimpleStrategy(aggressiveness=0.9)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.9)))
         g.start_game()
 
         # Pot manager should have at least main pot
@@ -278,7 +279,7 @@ class TestPlayerState:
     def test_busted_player_inactive(self):
         """Test that player with 0 chips is inactive."""
         g = Game(big_blind=20)
-        p1 = BotPlayer("p1", "Alice", 1000, aggressiveness=0.3)
+        p1 = BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3))
         p1.chips = 0
         p1.reset_for_hand()
         
@@ -287,7 +288,7 @@ class TestPlayerState:
     def test_active_player_can_act(self):
         """Test that active non-all-in players can act."""
         g = Game(big_blind=20)
-        p1 = BotPlayer("p1", "Alice", 1000, aggressiveness=0.3)
+        p1 = BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3))
         p1.reset_for_hand()
         
         assert p1.can_act() == True
@@ -295,7 +296,7 @@ class TestPlayerState:
     def test_all_in_player_cannot_act(self):
         """Test that all-in players cannot act."""
         g = Game(big_blind=20)
-        p1 = BotPlayer("p1", "Alice", 100, aggressiveness=0.3)
+        p1 = BotPlayer("p1", "Alice", 100, SimpleStrategy(aggressiveness=0.3))
         p1.is_all_in = True
         
         assert p1.can_act() == False
@@ -303,7 +304,7 @@ class TestPlayerState:
     def test_folded_player_cannot_act(self):
         """Test that folded players cannot act."""
         g = Game(big_blind=20)
-        p1 = BotPlayer("p1", "Alice", 1000, aggressiveness=0.3)
+        p1 = BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3))
         p1.is_active = False
         
         assert p1.can_act() == False
@@ -423,8 +424,8 @@ class TestGameState:
     def test_state_returns_to_waiting(self):
         """Test state returns to WAITING after hand completes."""
         g = Game(big_blind=20)
-        g.add_player(BotPlayer("p1", "Alice", 1000, aggressiveness=0.3))
-        g.add_player(BotPlayer("p2", "Bob", 1000, aggressiveness=0.3))
+        g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.3)))
+        g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.3)))
         g.start_game()
         
         # Hand should complete and return to WAITING
