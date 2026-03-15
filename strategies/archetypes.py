@@ -83,8 +83,8 @@ class LooseAggressiveStrategy(BotStrategy):
             return PlayerAction.CHECK, 0
         else:
             odds = pot_odds(min_call, pot_size)
-            if adj_eq >= 0.45 and rand_val < 0.65:
-                raise_amt = calc_raise_amount(pot_size, min_call, min_raise, player.chips, 1.0)
+            if adj_eq >= 0.50 and rand_val < 0.55:
+                raise_amt = calc_raise_amount(pot_size, min_call, min_raise, player.chips, 0.65)
                 if raise_amt == player.chips:
                     return PlayerAction.ALL_IN, raise_amt
                 return PlayerAction.RAISE, raise_amt

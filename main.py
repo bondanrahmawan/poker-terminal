@@ -3,7 +3,6 @@ from game import Game
 from terminal import TerminalPlayer
 from bot import BotPlayer
 from strategies.simple import SimpleStrategy
-from strategies.archetypes import TightPassiveStrategy, LooseAggressiveStrategy, CallingStationStrategy
 
 def main():
     print("Welcome to Poker Terminal Game!")
@@ -44,15 +43,15 @@ def main():
     # Varied personalities — cycles through archetypes for a diverse table
     strategy_pool = [
         SimpleStrategy(aggressiveness=0.6),
-        TightPassiveStrategy(),
-        LooseAggressiveStrategy(),
-        CallingStationStrategy(),
+        SimpleStrategy(aggressiveness=0.3),
+        SimpleStrategy(aggressiveness=0.7),
         SimpleStrategy(aggressiveness=0.4),
-        SimpleStrategy(aggressiveness=0.8),
-        TightPassiveStrategy(),
-        LooseAggressiveStrategy(),
-        CallingStationStrategy(),
         SimpleStrategy(aggressiveness=0.5),
+        SimpleStrategy(aggressiveness=0.8),
+        SimpleStrategy(aggressiveness=0.35),
+        SimpleStrategy(aggressiveness=0.65),
+        SimpleStrategy(aggressiveness=0.45),
+        SimpleStrategy(aggressiveness=0.55),
     ]
     for i in range(num_bots):
         g.add_player(BotPlayer(f"b{i}", bot_names[i], starting_chips, strategy_pool[i]))
