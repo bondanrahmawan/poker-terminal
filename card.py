@@ -1,5 +1,8 @@
 import random
 
+_ANSI_RED   = '\033[91m'
+_ANSI_RESET = '\033[0m'
+
 class Suit:
     SPADES = 'Spades'
     HEARTS = 'Hearts'
@@ -58,3 +61,10 @@ class Card:
     def __lt__(self, other):
         # Sort primarily by rank
         return self.rank < other.rank
+
+    def colored_str(self) -> str:
+        """Returns ANSI-colored repr: red for Hearts/Diamonds."""
+        base = repr(self)
+        if self.suit in (Suit.HEARTS, Suit.DIAMONDS):
+            return f"{_ANSI_RED}{base}{_ANSI_RESET}"
+        return base

@@ -1,70 +1,111 @@
 from typing import Tuple
 from player import Player, PlayerAction
+from card import Suit
+
+_RED   = '\033[91m'
+_RESET = '\033[0m'
+
+
+def _fmt_cards(cards) -> str:
+    """Return a colored string representation of a list of cards."""
+    parts = []
+    for c in cards:
+        s = repr(c)
+        if c.suit in (Suit.HEARTS, Suit.DIAMONDS):
+            parts.append(f"{_RED}{s}{_RESET}")
+        else:
+            parts.append(s)
+    return '[' + ', '.join(parts) + ']'
+
 
 class TerminalPlayer(Player):
     def get_action(self, game_state: dict) -> Tuple[str, int]:
-        min_call = game_state.get('min_call', 0)
-        min_raise = game_state.get('min_raise', 0)
-        pot_size = game_state.get('pot_size', 0)
+        min_call        = game_state.get('min_call', 0)
+        min_raise       = game_state.get('min_raise', 0)
+        pot_size        = game_state.get('pot_size', 0)
         community_cards = game_state.get('community_cards', [])
-        
-        print("\n" + "="*40)
+        hand_log        = game_state.get('hand_log', [])
+
+        print("\n" + "=" * 44)
         print(f"Player: {self.name} | Chips: {self.chips}")
-        print(f"Hole Cards: {self.hole_cards}")
+        print(f"Hole Cards: {_fmt_cards(self.hole_cards)}")
         if community_cards:
-            print(f"Community:  {community_cards}")
+            print(f"Community:  {_fmt_cards(community_cards)}")
         print(f"Pot Size:   {pot_size}")
-        print(f"To Call:    {min_call}")
-        print("="*40)
-        
+        if min_call > 0:
+            total = pot_size + min_call
+            pct   = (min_call / total * 100) if total > 0 else 0
+            ratio = round(pot_size / min_call, 1)
+            print(f"To Call:    {min_call}  (Pot odds: {ratio}:1 = {pct:.1f}%)")
+        else:
+            print(f"To Call:    0")
+        print("=" * 44)
+
+        # Pre-compute bet shortcuts
+        min_total = min_raise + min_call
+        half_pot  = max(min_total, (pot_size // 2) + min_call)
+        full_pot  = max(min_total, pot_size + min_call)
+        shortcuts = {
+            'min':  min(self.chips, min_total),
+            'half': min(self.chips, half_pot),
+            'pot':  min(self.chips, full_pot),
+        }
+
         while True:
             if min_call == 0:
-                print("Options: (c)heck, (b)et, (f)old, (a)ll-in, (s)tatus")
+                print("Options: (c)heck, (b)et, (f)old, (a)ll-in, (s)tatus, (h)istory")
             else:
-                print(f"Options: (c)all {min_call}, (r)aise, (f)old, (a)ll-in, (s)tatus")
-                
+                print(f"Options: (c)all {min_call}, (r)aise, (f)old, (a)ll-in, (s)tatus, (h)istory")
+
             choice = input(f"{self.name}, your action: ").strip().lower()
-            
+
             if choice in ['s', 'status']:
                 print("\n--- Player Status ---")
                 players_info = game_state.get('players_info', [])
-                # Sort by chip count (descending)
-                sorted_players = sorted(players_info, key=lambda p: p[1], reverse=True)
-                for p_name, p_chips, p_active in sorted_players:
+                for p_name, p_chips, p_active in sorted(players_info, key=lambda p: p[1], reverse=True):
                     status_str = "Active" if p_active else "Folded/Out"
-                    print(f"{p_name:<15} | Chips: {p_chips:<6} | Status: {status_str}")
+                    print(f"{p_name:<15} | Chips: {p_chips:<6} | {status_str}")
                 print("---------------------\n")
+                continue
+
+            if choice in ['h', 'history']:
+                print("\n--- Hand History ---")
+                for line in hand_log:
+                    print(line)
+                print("--------------------\n")
                 continue
 
             if choice in ['f', 'fold']:
                 return PlayerAction.FOLD, 0
-            
+
             elif choice in ['c', 'check', 'call']:
                 if min_call == 0:
                     return PlayerAction.CHECK, 0
-                else:
-                    call_amt = min(self.chips, min_call)
-                    if call_amt == self.chips:
-                        return PlayerAction.ALL_IN, call_amt
-                    return PlayerAction.CALL, call_amt
-                    
+                call_amt = min(self.chips, min_call)
+                if call_amt == self.chips:
+                    return PlayerAction.ALL_IN, call_amt
+                return PlayerAction.CALL, call_amt
+
             elif choice in ['b', 'r', 'bet', 'raise']:
+                print(f"  Shortcuts: min={shortcuts['min']}, half={shortcuts['half']}, pot={shortcuts['pot']}")
                 while True:
-                    amt_str = input(f"Enter total raise amount (min {min_raise + min_call}): ")
-                    if amt_str.isdigit():
-                        amt = int(amt_str)
-                        if amt >= min_raise + min_call and amt <= self.chips:
-                            if amt == self.chips:
-                                return PlayerAction.ALL_IN, amt
-                            return PlayerAction.RAISE, amt
-                        else:
-                            print(f"Invalid amount. Must be between {min_raise + min_call} and {self.chips}.")
+                    raw = input(f"  Amount (min {min_total}, or min/half/pot): ").strip().lower()
+                    if raw in shortcuts:
+                        amt = shortcuts[raw]
+                    elif raw.isdigit():
+                        amt = int(raw)
                     else:
-                        print("Please enter a valid number.")
-                        
+                        print("  Enter a number or min/half/pot.")
+                        continue
+                    if amt >= min_total and amt <= self.chips:
+                        if amt == self.chips:
+                            return PlayerAction.ALL_IN, amt
+                        return PlayerAction.RAISE, amt
+                    else:
+                        print(f"  Must be between {min_total} and {self.chips}.")
+
             elif choice in ['a', 'all-in', 'allin']:
                 return PlayerAction.ALL_IN, self.chips
-                
+
             else:
                 print("Invalid choice. Try again.")
-
