@@ -75,6 +75,7 @@ class Game:
             'best_hand_rank': 0,
             'best_hand_name': '-',
             'bust_hand': None,
+            'rebuys': 0,
             'starting_chips': player.chips,
         }
 
@@ -445,16 +446,32 @@ class Game:
 
     # ── Stats ────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _strategy_label(player: 'Player') -> str:
+        """Return a short strategy description for display in stats."""
+        strategy = getattr(player, 'strategy', None)
+        if strategy is None:
+            return 'human'
+        profile = getattr(strategy, 'profile', None)
+        diff = getattr(strategy, 'difficulty', None)
+        if profile:
+            diff_str = f"{diff:.1f}" if diff is not None else '?'
+            return f"{profile.name}/{diff_str}"
+        agg = getattr(strategy, 'aggressiveness', None)
+        if agg is not None:
+            return f"simple/{agg:.1f}"
+        return strategy.__class__.__name__
+
     def print_stats(self):
-        print("\n" + "=" * 90)
+        print("\n" + "=" * 118)
         print("  SESSION STATISTICS")
-        print("=" * 90)
+        print("=" * 118)
         header = (
-            f"  {'Name':<15} {'Played':>6}  {'Won':>5}  {'Win%':>5}  {'Net':>7}  "
-            f"{'Biggest Pot':>11}  {'Best Hand':<14}  {'Final':>6}  Status"
+            f"  {'Name':<15} {'Strategy':<22}  {'Played':>6}  {'Won':>5}  {'Win%':>5}  "
+            f"{'Rebuys':>6}  {'Net':>7}  {'Biggest Pot':>11}  {'Best Hand':<14}  {'Final':>6}  Status"
         )
         print(header)
-        print("  " + "-" * 86)
+        print("  " + "-" * 114)
         for p in sorted(self.players, key=lambda p: p.chips, reverse=True):
             s = self.stats[p.player_id]
             net = p.chips - s['starting_chips']
@@ -462,9 +479,17 @@ class Game:
             played = s['hands_played']
             won = s['hands_won']
             win_pct = f"{won / played * 100:.0f}%" if played > 0 else "-"
-            status = f"Bust hand #{s['bust_hand']}" if s['bust_hand'] else "Active"
+            rebuys = s.get('rebuys', 0)
+            if p.chips > 0:
+                status = "Active"
+            elif s['bust_hand']:
+                status = f"Bust hand #{s['bust_hand']}"
+            else:
+                status = "Out"
+            strategy_str = self._strategy_label(p)
             print(
-                f"  {p.name:<15} {played:>6}  {won:>5}  {win_pct:>5}  {net_str:>7}  "
-                f"{s['biggest_pot']:>11}  {s['best_hand_name']:<14}  {p.chips:>6}  {status}"
+                f"  {p.name:<15} {strategy_str:<22}  {played:>6}  {won:>5}  {win_pct:>5}  "
+                f"{rebuys:>6}  {net_str:>7}  {s['biggest_pot']:>11}  {s['best_hand_name']:<14}  "
+                f"{p.chips:>6}  {status}"
             )
-        print("=" * 90)
+        print("=" * 118)

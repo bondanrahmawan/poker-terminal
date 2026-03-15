@@ -97,6 +97,7 @@ def main():
             if ans in ['y', 'yes']:
                 human.chips = starting_chips
                 g.stats[human.player_id]['starting_chips'] += starting_chips
+                g.stats[human.player_id]['rebuys'] += 1
                 print(f"Rebought! You now have {starting_chips} chips.")
         elif game_mode == 'cash':
             # Cash game: any bust player can rebuy automatically
@@ -104,6 +105,7 @@ def main():
                 if p.chips == 0 and not isinstance(p, TerminalPlayer):
                     p.chips = starting_chips
                     g.stats[p.player_id]['starting_chips'] += starting_chips
+                    g.stats[p.player_id]['rebuys'] += 1
 
         active_players = [p for p in g.players if p.chips > 0]
         if spectator:
