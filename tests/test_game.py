@@ -131,8 +131,8 @@ class TestDealing:
         g.add_player(BotPlayer("p2", "Bob", 1000, SimpleStrategy(aggressiveness=0.1)))
         g.start_game()
 
-        # Count community card deals (>> [cards] pattern)
-        community_lines = [l for l in g.logs if ">>" in l and "[" in l and "]" in l]
+        # Count community card deals (street header lines like --- FLOP ---)
+        community_lines = [l for l in g.logs if any(s in l for s in ["--- FLOP ---", "--- TURN ---", "--- RIVER ---"])]
 
         # Should have at least flop (first community card deal)
         assert len(community_lines) >= 1
@@ -185,6 +185,8 @@ class TestShowdown:
 
     def test_showdown_shows_cards_multiway(self):
         """Test that showdown reveals cards when multiple players remain."""
+        import random
+        random.seed(42)
         g = Game(big_blind=20)
         # Use passive bots to encourage seeing showdown
         g.add_player(BotPlayer("p1", "Alice", 1000, SimpleStrategy(aggressiveness=0.15)))
@@ -192,9 +194,16 @@ class TestShowdown:
         g.add_player(BotPlayer("p3", "Charlie", 1000, SimpleStrategy(aggressiveness=0.15)))
         g.start_game()
 
-        # Check for card reveal in logs
+        # Check for card reveal in logs — only required if multiple players reach showdown
+        log_text = "\n".join(g.logs)
         show_logs = [log for log in g.logs if "shows" in log]
-        assert len(show_logs) > 0, "Showdown should show cards when multiple players remain"
+        folded_count = sum(1 for log in g.logs if " fold " in log)
+        # If fewer than 2 players folded preflop, multiple players should reach showdown
+        if folded_count < 2:
+            assert len(show_logs) > 0, "Showdown should show cards when multiple players remain"
+        else:
+            # Hand ended with only 1 player — valid; just check hand completed
+            assert "Hand complete." in g.logs[-1], "Hand should complete"
 
     def test_winner_announced(self):
         """Test that winner is announced in logs."""

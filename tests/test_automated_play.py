@@ -150,8 +150,8 @@ class TestGameFlowValidation:
 
         g.start_game()
 
-        # Count community card deal events (>> pattern with cards like [2♠, 3♥, 4♦])
-        community_deals = [log for log in g.logs if ">>" in log and "[" in log and "]" in log]
+        # Count community card deal events (street headers like --- FLOP ---, --- TURN ---, --- RIVER ---)
+        community_deals = [log for log in g.logs if any(s in log for s in ["--- FLOP ---", "--- TURN ---", "--- RIVER ---"])]
 
         # If hand went to showdown with multiple players, should see community cards
         # If everyone folded early, that's also valid - just check hand completed

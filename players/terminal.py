@@ -7,7 +7,6 @@ _RESET = '\033[0m'
 
 
 def _fmt_cards(cards) -> str:
-    """Return a colored string representation of a list of cards."""
     parts = []
     for c in cards:
         s = repr(c)
@@ -25,9 +24,12 @@ class TerminalPlayer(Player):
         pot_size        = game_state.get('pot_size', 0)
         community_cards = game_state.get('community_cards', [])
         hand_log        = game_state.get('hand_log', [])
+        player_role     = game_state.get('player_role', '')
 
-        print("\n" + "=" * 44)
-        print(f"Player: {self.name} | Chips: {self.chips}")
+        # ── Info header ──────────────────────────────────────────────────────
+        print("\n" + "=" * 50)
+        pos_str = f"  Position : {player_role}" if player_role else ""
+        print(f"Player: {self.name} | Chips: {self.chips}{pos_str}")
         print(f"Hole Cards: {_fmt_cards(self.hole_cards)}")
         if community_cards:
             print(f"Community:  {_fmt_cards(community_cards)}")
@@ -39,10 +41,12 @@ class TerminalPlayer(Player):
             print(f"To Call:    {min_call}  (Pot odds: {ratio}:1 = {pct:.1f}%)")
         else:
             print(f"To Call:    0")
-        print("=" * 44)
+        # Always show min raise so player can plan
+        min_total = min_raise + min_call
+        print(f"Min Raise:  {min(self.chips, min_total)}")
+        print("=" * 50)
 
         # Pre-compute bet shortcuts
-        min_total = min_raise + min_call
         half_pot  = max(min_total, (pot_size // 2) + min_call)
         full_pot  = max(min_total, pot_size + min_call)
         shortcuts = {
@@ -63,8 +67,15 @@ class TerminalPlayer(Player):
                 print("\n--- Player Status ---")
                 players_info = game_state.get('players_info', [])
                 for p_name, p_chips, p_active in sorted(players_info, key=lambda p: p[1], reverse=True):
-                    status_str = "Active" if p_active else "Folded/Out"
-                    print(f"{p_name:<15} | Chips: {p_chips:<6} | {status_str}")
+                    if p_chips == 0 and p_active:
+                        status_str = "All-In"
+                    elif p_chips == 0:
+                        status_str = "Out"
+                    elif not p_active:
+                        status_str = "Folded"
+                    else:
+                        status_str = "Active"
+                    print(f"  {p_name:<15} | Chips: {p_chips:<6} | {status_str}")
                 print("---------------------\n")
                 continue
 
@@ -105,7 +116,10 @@ class TerminalPlayer(Player):
                         print(f"  Must be between {min_total} and {self.chips}.")
 
             elif choice in ['a', 'all-in', 'allin']:
-                return PlayerAction.ALL_IN, self.chips
+                confirm = input(f"  All-in for {self.chips} chips? (y/n): ").strip().lower()
+                if confirm in ['y', 'yes']:
+                    return PlayerAction.ALL_IN, self.chips
+                print("  All-in cancelled.")
 
             else:
                 print("Invalid choice. Try again.")

@@ -2,72 +2,130 @@ import os
 from core.game import Game
 from players.terminal import TerminalPlayer
 from players.roster import create_bots, MAX_BOTS
+from strategies.difficulty import EASY, NORMAL, HARD
+
+
+def _prompt_int(prompt: str, default: int, min_val: int = 1) -> int:
+    raw = input(prompt).strip()
+    return max(min_val, int(raw)) if raw.isdigit() else default
+
+
+def _prompt_yn(prompt: str, default: bool = False) -> bool:
+    raw = input(prompt).strip().lower()
+    return raw in ['y', 'yes'] if raw else default
+
 
 def main():
-    print("Welcome to Poker Terminal Game!")
+    print("=" * 50)
+    print("  Welcome to Poker Terminal!")
+    print("=" * 50)
 
-    player_name = input("Enter your name: ").strip()
-    if not player_name:
-        player_name = "Player 1"
+    # ── Game mode ────────────────────────────────────────────────────────────
+    print("\nGame Mode:")
+    print("  1. Tournament  (blinds escalate each level)")
+    print("  2. Cash Game   (fixed blinds, unlimited rebuys)")
+    print("  3. Spectator   (watch bots play)")
+    mode_input = input("Choose (default 1): ").strip()
+    if mode_input == '2':
+        game_mode = 'cash'
+        spectator = False
+    elif mode_input == '3':
+        game_mode = 'tournament'
+        spectator = True
+    else:
+        game_mode = 'tournament'
+        spectator = False
 
-    MAX_BOTS = 10
-    num_bots_str = input(f"How many bots? (default 3, max {MAX_BOTS}): ").strip()
-    num_bots = 3
-    if num_bots_str.isdigit():
-        num_bots = min(int(num_bots_str), MAX_BOTS)
+    # ── Variant ──────────────────────────────────────────────────────────────
+    short_deck = _prompt_yn("Short deck (6+ cards, Flush > Full House)? (y/n, default n): ")
 
-    starting_chips_str = input("Starting chips? (default 1000): ").strip()
-    starting_chips = 1000
-    if starting_chips_str.isdigit():
-        starting_chips = int(starting_chips_str)
+    # ── Player name ──────────────────────────────────────────────────────────
+    if not spectator:
+        player_name = input("Enter your name (default Player 1): ").strip() or "Player 1"
 
-    big_blind_str = input("Big Blind? (default 20): ").strip()
-    big_blind = 20
-    if big_blind_str.isdigit():
-        big_blind = int(big_blind_str)
+    # ── Bots ─────────────────────────────────────────────────────────────────
+    num_bots = _prompt_int(f"How many bots? (default 3, max {MAX_BOTS}): ", 3)
+    num_bots = min(num_bots, MAX_BOTS)
 
-    hands_per_level_str = input("Hands per blind level? (default 5): ").strip()
-    hands_per_level = 5
-    if hands_per_level_str.isdigit():
-        hands_per_level = int(hands_per_level_str)
+    print("\nTable difficulty:")
+    print("  1. Easy    (bots make more mistakes)")
+    print("  2. Normal  (default)")
+    print("  3. Hard    (bots play sharper)")
+    diff_input = input("Choose (default 2): ").strip()
+    difficulty = {1: EASY, '1': EASY, 3: HARD, '3': HARD}.get(diff_input, NORMAL)
 
-    ante_str = input("Enable ante? (y/n, default n): ").strip().lower()
-    enable_ante = ante_str in ['y', 'yes']
+    shuffle_bots = _prompt_yn("Randomise bot seating? (y/n, default n): ")
 
-    g = Game(big_blind=big_blind, hands_per_level=hands_per_level, ante=enable_ante, live_output=True)
-    g.add_player(TerminalPlayer("h1", player_name, starting_chips))
+    # ── Table config ─────────────────────────────────────────────────────────
+    starting_chips = _prompt_int("Starting chips? (default 1000): ", 1000)
+    big_blind      = _prompt_int("Big Blind? (default 20): ", 20)
 
-    for bot in create_bots(num_bots, starting_chips):
+    if game_mode == 'tournament':
+        print("\nBlind schedule:")
+        print("  1. Normal  (5 hands per level)")
+        print("  2. Turbo   (2 hands per level)")
+        turbo = input("Choose (default 1): ").strip()
+        hands_per_level = 2 if turbo == '2' else _prompt_int(
+            "Hands per blind level? (default 5): ", 5)
+    else:
+        hands_per_level = 9999  # cash game: never escalate
+
+    enable_ante = _prompt_yn("Enable ante? (y/n, default n): ")
+
+    # ── Build game ───────────────────────────────────────────────────────────
+    g = Game(big_blind=big_blind, hands_per_level=hands_per_level,
+             ante=enable_ante, live_output=True,
+             game_mode=game_mode, short_deck=short_deck)
+
+    if not spectator:
+        g.add_player(TerminalPlayer("h1", player_name, starting_chips))
+
+    for bot in create_bots(num_bots, starting_chips, difficulty=difficulty, shuffled=shuffle_bots):
         g.add_player(bot)
 
-    human = next(p for p in g.players if isinstance(p, TerminalPlayer))
+    human = next((p for p in g.players if isinstance(p, TerminalPlayer)), None)
 
+    # ── Game loop ────────────────────────────────────────────────────────────
     play_again = True
     while play_again:
         os.system('clear' if os.name == 'posix' else 'cls')
         g.start_game()
         g.logs = []
 
-        # Offer rebuy to human if they busted this hand
-        if human.chips == 0:
+        if human and human.chips == 0:
             ans = input(f"\nYou're out of chips! Rebuy for {starting_chips}? (y/n): ").strip().lower()
             if ans in ['y', 'yes']:
                 human.chips = starting_chips
                 g.stats[human.player_id]['starting_chips'] += starting_chips
                 print(f"Rebought! You now have {starting_chips} chips.")
+        elif game_mode == 'cash':
+            # Cash game: any bust player can rebuy automatically
+            for p in g.players:
+                if p.chips == 0 and not isinstance(p, TerminalPlayer):
+                    p.chips = starting_chips
+                    g.stats[p.player_id]['starting_chips'] += starting_chips
 
         active_players = [p for p in g.players if p.chips > 0]
-        if len(active_players) <= 1:
-            winner = active_players[0].name if active_players else "Nobody"
-            print(f"\nGame Over! {winner} wins!")
-            break
-
-        ans = input("\nPlay another hand? (y/n): ").strip().lower()
-        if ans not in ['y', 'yes', '']:
-            play_again = False
+        if spectator:
+            if len(active_players) <= 1:
+                winner = active_players[0].name if active_players else "Nobody"
+                print(f"\nGame Over! {winner} wins!")
+                break
+            ans = input("\nNext hand? (Enter to continue, q to quit): ").strip().lower()
+            if ans == 'q':
+                play_again = False
+        else:
+            if len(active_players) <= 1:
+                winner = active_players[0].name if active_players else "Nobody"
+                print(f"\nGame Over! {winner} wins!")
+                break
+            ans = input("\nPlay another hand? (y/n): ").strip().lower()
+            if ans not in ['y', 'yes', '']:
+                play_again = False
 
     g.print_stats()
     print("Thanks for playing!")
+
 
 if __name__ == "__main__":
     main()
