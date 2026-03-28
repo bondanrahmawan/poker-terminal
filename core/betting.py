@@ -23,31 +23,41 @@ class PotManager:
         """
         Builds the main pot and side pots based on player contributions.
         Should be called at the end of the hand (showdown) or when dealing with all-ins.
+        
+        Args:
+            active_player_ids: List of player IDs who haven't folded (eligible to win pots)
         """
         self.pots = []
         contribs = {pid: amt for pid, amt in self.contributions.items() if amt > 0}
-        
+
         while contribs:
-            # Find the smallest contribution
+            # Find the smallest contribution level
             min_contrib = min(contribs.values())
-            
+
             pot = Pot()
             pot.amount = 0
-            
-            keys_to_remove = []
+            players_at_this_level = []
+
+            # Collect contributions at this level
             for pid in list(contribs.keys()):
-                pot.amount += min_contrib
                 contribs[pid] -= min_contrib
-                # Only players who are still active (not folded) are eligible
-                if pid in active_player_ids:
-                    pot.eligible_players.add(pid)
-                    
+                pot.amount += min_contrib
+                players_at_this_level.append(pid)
+
                 if contribs[pid] == 0:
-                    keys_to_remove.append(pid)
-                    
-            for key in keys_to_remove:
-                del contribs[key]
-                
+                    del contribs[pid]
+
+            # All players who contributed at this level are eligible for this pot
+            # Folded players forfeit their share to remaining eligible players
+            active_at_level = [pid for pid in players_at_this_level if pid in active_player_ids]
+            
+            # If all players at this level folded (shouldn't happen normally), 
+            # give to remaining active players
+            if not active_at_level:
+                pot.eligible_players = set(active_player_ids)
+            else:
+                pot.eligible_players = set(active_at_level)
+
             if pot.amount > 0:
                 self.pots.append(pot)
 

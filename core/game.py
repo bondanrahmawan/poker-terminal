@@ -234,6 +234,7 @@ class Game:
         active_count = len([p for p in self.players if p.is_active])
         heads_up = active_count == 2
 
+        # Default: BB or player after BB acts first
         start_idx = (self.dealer_idx + 1) % n
 
         if self.state == GameState.PREFLOP:
@@ -246,10 +247,12 @@ class Game:
                     self._log_action(p.name, "ante", ante_amt)
 
             if heads_up:
+                # Heads-up: SB (dealer) acts first preflop, BB acts first postflop
                 sb_player = self.players[self.dealer_idx]
                 bb_player = self.players[(self.dealer_idx + 1) % n]
-                start_idx = self.dealer_idx
+                start_idx = self.dealer_idx  # SB acts first preflop
             else:
+                # Full ring: SB posts, BB posts, UTG+ (after BB) acts first
                 sb_player = self.players[(self.dealer_idx + 1) % n]
                 bb_player = self.players[(self.dealer_idx + 2) % n]
                 start_idx = (self.dealer_idx + 3) % n
@@ -263,53 +266,80 @@ class Game:
             self.pot_manager.add_contribution(bb_player.player_id, bb_amt)
             self.bet_manager.process_bet(bb_player.player_id, bb_amt)
             self._log_action(bb_player.name, "posts BB", bb_amt)
+        else:
+            # Postflop betting rounds
+            if heads_up:
+                # Heads-up postflop: BB (non-dealer) acts first
+                start_idx = (self.dealer_idx + 1) % n
+            else:
+                # Full ring postflop: SB (first active after dealer) acts first
+                start_idx = (self.dealer_idx + 1) % n
 
         players_to_act = [p for p in self.players if p.can_act()]
         current_idx = start_idx
+        iterations_without_progress = 0
+        max_iterations = len(players_to_act) * 2 + 10  # Prevent infinite loops
 
-        while players_to_act:
+        while players_to_act and iterations_without_progress < max_iterations:
             p = self.players[current_idx]
-            if p in players_to_act and p.can_act():
-                role = self.player_roles.get(p.player_id, '')
-                game_state_data = {
-                    'min_call':       self.bet_manager.get_amount_to_call(p.player_id),
-                    'min_raise':      self.bet_manager.min_raise,
-                    'pot_size':       self.pot_manager.total_pot(),
-                    'community_cards': self.community_cards,
-                    'players_info':   [(o.name, o.chips, o.is_active) for o in self.players],
-                    'position':       (self.players.index(p) - self.dealer_idx) % n,
-                    'player_role':    role,
-                    'num_active':     active_count,
-                    'hand_log':       list(self.logs),
-                }
-
-                action, amt = p.get_action(game_state_data)
-
-                if action == PlayerAction.FOLD:
-                    p.fold()
+            
+            # Skip players who are no longer in the list or can't act
+            if p not in players_to_act or not p.can_act():
+                # Remove from players_to_act if they can't act anymore (e.g., went all-in)
+                if p in players_to_act and not p.can_act():
                     players_to_act.remove(p)
-                    self._log_action(p.name, "fold", 0)
-                    self.fold_streets[p.player_id] = self.current_street
+                current_idx = (current_idx + 1) % n
+                continue
+            
+            iterations_without_progress += 1
+            
+            role = self.player_roles.get(p.player_id, '')
+            game_state_data = {
+                'min_call':       self.bet_manager.get_amount_to_call(p.player_id),
+                'min_raise':      self.bet_manager.min_raise,
+                'pot_size':       self.pot_manager.total_pot(),
+                'community_cards': self.community_cards,
+                'players_info':   [(o.name, o.chips, o.is_active) for o in self.players],
+                'position':       (self.players.index(p) - self.dealer_idx) % n,
+                'player_role':    role,
+                'num_active':     active_count,
+                'hand_log':       list(self.logs),
+            }
+
+            action, amt = p.get_action(game_state_data)
+
+            if action == PlayerAction.FOLD:
+                p.fold()
+                players_to_act.remove(p)
+                self._log_action(p.name, "fold", 0)
+                self.fold_streets[p.player_id] = self.current_street
+            else:
+                actual_deducted = p.lose_chips(amt)
+                self.pot_manager.add_contribution(p.player_id, actual_deducted)
+
+                if action in (PlayerAction.RAISE, PlayerAction.ALL_IN) and \
+                        actual_deducted > self.bet_manager.get_amount_to_call(p.player_id):
+                    self.bet_manager.process_bet(p.player_id, actual_deducted, is_raise=True)
+                    # A raise reopens betting for all active players except the raiser
+                    players_to_act = [o for o in self.players if o.can_act() and o != p]
                 else:
-                    actual_deducted = p.lose_chips(amt)
-                    self.pot_manager.add_contribution(p.player_id, actual_deducted)
+                    self.bet_manager.process_bet(p.player_id, actual_deducted, is_raise=False)
+                    players_to_act.remove(p)
 
-                    if action in (PlayerAction.RAISE, PlayerAction.ALL_IN) and \
-                            actual_deducted > self.bet_manager.get_amount_to_call(p.player_id):
-                        self.bet_manager.process_bet(p.player_id, actual_deducted, is_raise=True)
-                        players_to_act = [o for o in self.players if o.can_act() and o != p]
-                    else:
-                        self.bet_manager.process_bet(p.player_id, actual_deducted, is_raise=False)
-                        players_to_act.remove(p)
+                self._log_action(p.name, action.value, actual_deducted)
 
-                    self._log_action(p.name, action.value, actual_deducted)
-
-                    if action == PlayerAction.ALL_IN:
-                        self.log(f">> {p.name} is ALL-IN")
+                if action == PlayerAction.ALL_IN:
+                    self.log(f">> {p.name} is ALL-IN")
 
             current_idx = (current_idx + 1) % n
+            
+            # Check if only one player remains active
             if len([p for p in self.players if p.is_active]) == 1:
                 break
+        
+        # Safety check: if we hit max iterations, force end the betting round
+        if iterations_without_progress >= max_iterations:
+            self.log("WARNING: Betting round terminated due to excessive iterations")
 
     def _is_hand_over(self) -> bool:
         return len([p for p in self.players if p.is_active]) <= 1
