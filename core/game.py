@@ -493,33 +493,155 @@ class Game:
         return strategy.__class__.__name__
 
     def print_stats(self):
-        print("\n" + "=" * 118)
-        print("  SESSION STATISTICS")
-        print("=" * 118)
-        header = (
-            f"  {'Name':<15} {'Strategy':<22}  {'Played':>6}  {'Won':>5}  {'Win%':>5}  "
-            f"{'Rebuys':>6}  {'Net':>7}  {'Biggest Pot':>11}  {'Best Hand':<14}  {'Final':>6}  Status"
+        """Print enhanced session statistics with visual formatting."""
+        # Color codes
+        GREEN = '\033[92m'
+        RED = '\033[91m'
+        YELLOW = '\033[93m'
+        CYAN = '\033[96m'
+        MAGENTA = '\033[95m'
+        BOLD = '\033[1m'
+        DIM = '\033[2m'
+        RESET = '\033[0m'
+        
+        # Header
+        print()
+        print(f"{BOLD}{CYAN}╔{'═' * 116}╗{RESET}")
+        print(f"{BOLD}{CYAN}║{RESET}{BOLD}{'SESSION STATISTICS':^116}{RESET}{BOLD}{CYAN}║{RESET}")
+        print(f"{BOLD}{CYAN}╠{'═' * 116}╣{RESET}")
+        
+        # Summary stats
+        total_hands = sum(s['hands_played'] for s in self.stats.values())
+        total_rebuys = sum(s.get('rebuys', 0) for s in self.stats.values())
+        biggest_pot = max(s['biggest_pot'] for s in self.stats.values())
+        best_hand = max(self.stats.values(), key=lambda x: x['best_hand_rank'])
+        
+        summary_line = (
+            f"{DIM}  Total Hands:{RESET} {BOLD}{total_hands:>6}{RESET}  "
+            f"{DIM}|{RESET} {DIM}Total Rebuys:{RESET} {YELLOW}{total_rebuys:>6}{RESET}  "
+            f"{DIM}|{RESET} {DIM}Biggest Pot:{RESET} {GREEN}{biggest_pot:>8}{RESET}  "
+            f"{DIM}|{RESET} {DIM}Best Hand:{RESET} {MAGENTA}{best_hand['best_hand_name']:<14}{RESET}"
         )
-        print(header)
-        print("  " + "-" * 114)
-        for p in sorted(self.players, key=lambda p: p.chips, reverse=True):
+        print(f"{BOLD}{CYAN}║{RESET}  {summary_line}  {BOLD}{CYAN}║{RESET}")
+        print(f"{BOLD}{CYAN}╠{'═' * 116}╣{RESET}")
+        
+        # Table header
+        header = (
+            f"  {BOLD}{'Rank':>4}{RESET}  "
+            f"{BOLD}{'Name':<15}{RESET}  "
+            f"{BOLD}{'Strategy':<18}{RESET}  "
+            f"{BOLD}{'Chips':>8}{RESET}  "
+            f"{BOLD}{'Net':>8}{RESET}  "
+            f"{BOLD}{'Played':>6}{RESET}  "
+            f"{BOLD}{'Won':>5}{RESET}  "
+            f"{BOLD}{'Win%':>6}{RESET}  "
+            f"{BOLD}{'Rebuys':>5}{RESET}  "
+            f"{BOLD}{'Big Pot':>8}{RESET}  "
+            f"{BOLD}{'Best Hand':<14}{RESET}  "
+            f"{BOLD}Status{RESET}"
+        )
+        print(f"{BOLD}{CYAN}║{RESET}{header}  {BOLD}{CYAN}║{RESET}")
+        print(f"{BOLD}{CYAN}╠{'═' * 116}╣{RESET}")
+        
+        # Player rows - sorted by chips
+        sorted_players = sorted(self.players, key=lambda p: p.chips, reverse=True)
+        
+        for rank, p in enumerate(sorted_players, 1):
             s = self.stats[p.player_id]
             net = p.chips - s['starting_chips']
-            net_str = f"+{net}" if net > 0 else str(net)
+            
+            # Color coding for net
+            if net > 0:
+                net_str = f"{GREEN}+{net}{RESET}"
+            elif net < 0:
+                net_str = f"{RED}{net}{RESET}"
+            else:
+                net_str = f"{DIM}0{RESET}"
+            
+            # Win percentage
             played = s['hands_played']
             won = s['hands_won']
-            win_pct = f"{won / played * 100:.0f}%" if played > 0 else "-"
-            rebuys = s.get('rebuys', 0)
-            if p.chips > 0:
-                status = "Active"
-            elif s['bust_hand']:
-                status = f"Bust hand #{s['bust_hand']}"
+            if played > 0:
+                win_pct = won / played * 100
+                if win_pct >= 50:
+                    win_pct_str = f"{GREEN}{win_pct:>5.0f}%{RESET}"
+                elif win_pct >= 25:
+                    win_pct_str = f"{YELLOW}{win_pct:>5.0f}%{RESET}"
+                else:
+                    win_pct_str = f"{RED}{win_pct:>5.0f}%{RESET}"
             else:
-                status = "Out"
+                win_pct_str = f"{DIM}  -  {RESET}"
+            
+            # Status with icon
+            if p.chips > 0:
+                status = f"{GREEN}● Active{RESET}"
+            elif s['bust_hand']:
+                status = f"{RED}✕ Bust #{s['bust_hand']}{RESET}"
+            else:
+                status = f"{DIM}○ Out{RESET}"
+            
+            # Rebuys highlight
+            rebuys = s.get('rebuys', 0)
+            if rebuys > 3:
+                rebuys_str = f"{RED}{rebuys:>5}{RESET}"
+            elif rebuys > 0:
+                rebuys_str = f"{YELLOW}{rebuys:>5}{RESET}"
+            else:
+                rebuys_str = f"{DIM}{rebuys:>5}{RESET}"
+            
+            # Rank medal
+            if rank == 1:
+                rank_str = f"{YELLOW}🥇{RESET}"
+            elif rank == 2:
+                rank_str = f"{DIM}🥈{RESET}"
+            elif rank == 3:
+                rank_str = f"{MAGENTA}🥉{RESET}"
+            else:
+                rank_str = f"{DIM}{rank:>4}{RESET}"
+            
             strategy_str = self._strategy_label(p)
-            print(
-                f"  {p.name:<15} {strategy_str:<22}  {played:>6}  {won:>5}  {win_pct:>5}  "
-                f"{rebuys:>6}  {net_str:>7}  {s['biggest_pot']:>11}  {s['best_hand_name']:<14}  "
-                f"{p.chips:>6}  {status}"
+            
+            row = (
+                f"  {rank_str}  "
+                f"{p.name:<15}  "
+                f"{DIM}{strategy_str:<18}{RESET}  "
+                f"{BOLD}{p.chips:>8}{RESET}  "
+                f"{net_str}  "
+                f"{DIM}{played:>6}{RESET}  "
+                f"{won:>5}  "
+                f"{win_pct_str}  "
+                f"{rebuys_str}  "
+                f"{DIM}{s['biggest_pot']:>8}{RESET}  "
+                f"{MAGENTA}{s['best_hand_name']:<14}{RESET}  "
+                f"{status}"
             )
-        print("=" * 118)
+            print(f"{BOLD}{CYAN}║{RESET}{row}  {BOLD}{CYAN}║{RESET}")
+        
+        # Footer
+        print(f"{BOLD}{CYAN}╚{'═' * 116}╝{RESET}")
+        
+        # Top performers section
+        print()
+        print(f"{BOLD}{DIM}  ─── TOP PERFORMERS ───{RESET}")
+        
+        # Best win rate (min 5 hands)
+        eligible = [p for p in self.players if self.stats[p.player_id]['hands_played'] >= 5]
+        if eligible:
+            best_wr = max(eligible, key=lambda p: self.stats[p.player_id]['hands_won'] / max(1, self.stats[p.player_id]['hands_played']))
+            best_wr_pct = self.stats[best_wr.player_id]['hands_won'] / self.stats[best_wr.player_id]['hands_played'] * 100
+            print(f"  {DIM}Best Win Rate:{RESET}  {BOLD}{GREEN}{best_wr.name}{RESET} ({YELLOW}{best_wr_pct:.0f}%{RESET})")
+        
+        # Biggest pot winner
+        biggest = max(self.players, key=lambda p: self.stats[p.player_id]['biggest_pot'])
+        print(f"  {DIM}Biggest Pot:{RESET}  {BOLD}{GREEN}{biggest.name}{RESET} ({YELLOW}{self.stats[biggest.player_id]['biggest_pot']}{RESET})")
+        
+        # Best hand
+        best = max(self.players, key=lambda p: self.stats[p.player_id]['best_hand_rank'])
+        print(f"  {DIM}Best Hand:{RESET}  {BOLD}{MAGENTA}{best.name}{RESET} ({YELLOW}{self.stats[best.player_id]['best_hand_name']}{RESET})")
+        
+        # Most aggressive (most hands played)
+        if eligible:
+            most_active = max(eligible, key=lambda p: self.stats[p.player_id]['hands_played'])
+            print(f"  {DIM}Most Active:{RESET}  {BOLD}{CYAN}{most_active.name}{RESET} ({YELLOW}{self.stats[most_active.player_id]['hands_played']} hands{RESET})")
+        
+        print()
