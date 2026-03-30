@@ -527,7 +527,7 @@ class Game:
         
         # Table header
         header = (
-            f"  {BOLD}{'Rank':>4}{RESET}  "
+            f"  {BOLD}{'Rank':>3}{RESET}  "
             f"{BOLD}{'Name':<15}{RESET}  "
             f"{BOLD}{'Strategy':<18}{RESET}  "
             f"{BOLD}{'Chips':>8}{RESET}  "
@@ -589,15 +589,15 @@ class Game:
             else:
                 rebuys_str = f"{DIM}{rebuys:>5}{RESET}"
             
-            # Rank medal
+            # Rank indicator (right-aligned numbers with color for top 3)
             if rank == 1:
-                rank_str = f"{YELLOW}🥇{RESET}"
+                rank_str = f"{YELLOW}{rank:>3}{RESET}"
             elif rank == 2:
-                rank_str = f"{DIM}🥈{RESET}"
+                rank_str = f"{DIM}{rank:>3}{RESET}"
             elif rank == 3:
-                rank_str = f"{MAGENTA}🥉{RESET}"
+                rank_str = f"{MAGENTA}{rank:>3}{RESET}"
             else:
-                rank_str = f"{DIM}{rank:>4}{RESET}"
+                rank_str = f"{DIM}{rank:>3}{RESET}"
             
             strategy_str = self._strategy_label(p)
             
