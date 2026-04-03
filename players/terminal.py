@@ -47,10 +47,11 @@ class TerminalPlayer(Player):
         print("=" * 50)
 
         # Pre-compute bet shortcuts
-        half_pot  = max(min_total, (pot_size // 2) + min_call)
-        full_pot  = max(min_total, pot_size + min_call)
+        min_raise_total = min(self.chips, min_raise + min_call)
+        half_pot  = max(min_raise_total, (pot_size // 2) + min_call)
+        full_pot  = max(min_raise_total, pot_size + min_call)
         shortcuts = {
-            'min':  min(self.chips, min_total),
+            'min':  min_raise_total,
             'half': min(self.chips, half_pot),
             'pot':  min(self.chips, full_pot),
         }
@@ -100,7 +101,7 @@ class TerminalPlayer(Player):
             elif choice in ['b', 'r', 'bet', 'raise']:
                 print(f"  Shortcuts: min={shortcuts['min']}, half={shortcuts['half']}, pot={shortcuts['pot']}")
                 while True:
-                    raw = input(f"  Amount (min {min_total}, or min/half/pot): ").strip().lower()
+                    raw = input(f"  Amount (min {min_raise_total}, or min/half/pot): ").strip().lower()
                     if raw in shortcuts:
                         amt = shortcuts[raw]
                     elif raw.isdigit():
@@ -108,12 +109,12 @@ class TerminalPlayer(Player):
                     else:
                         print("  Enter a number or min/half/pot.")
                         continue
-                    if amt >= min_total and amt <= self.chips:
+                    if amt >= min_raise_total and amt <= self.chips:
                         if amt == self.chips:
                             return PlayerAction.ALL_IN, amt
                         return PlayerAction.RAISE, amt
                     else:
-                        print(f"  Must be between {min_total} and {self.chips}.")
+                        print(f"  Must be between {min_raise_total} and {self.chips}.")
 
             elif choice in ['a', 'all-in', 'allin']:
                 confirm = input(f"  All-in for {self.chips} chips? (y/n): ").strip().lower()

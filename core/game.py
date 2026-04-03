@@ -494,6 +494,7 @@ class Game:
 
     def print_stats(self):
         """Print enhanced session statistics with visual formatting."""
+        import re
         # Color codes
         GREEN = '\033[92m'
         RED = '\033[91m'
@@ -503,75 +504,89 @@ class Game:
         BOLD = '\033[1m'
         DIM = '\033[2m'
         RESET = '\033[0m'
+
+        # Helper to get visual width (strip ANSI codes)
+        def visual_len(s):
+            return len(re.sub(r'\033\[[0-9;]*m', '', s))
+
+        # Helper to pad string to visual width
+        def visual_ljust(s, width):
+            vlen = visual_len(s)
+            return s + ' ' * max(0, width - vlen)
+
+        def visual_rjust(s, width):
+            vlen = visual_len(s)
+            return ' ' * max(0, width - vlen) + s
         
         # Header
         print()
-        print(f"{BOLD}{CYAN}╔{'═' * 116}╗{RESET}")
-        print(f"{BOLD}{CYAN}║{RESET}{BOLD}{'SESSION STATISTICS':^116}{RESET}{BOLD}{CYAN}║{RESET}")
-        print(f"{BOLD}{CYAN}╠{'═' * 116}╣{RESET}")
-        
+        print(f"{BOLD}{CYAN}╔{'═' * 126}╗{RESET}")
+        print(f"{BOLD}{CYAN}║{RESET}{BOLD}{'SESSION STATISTICS':^126}{RESET}{BOLD}{CYAN}║{RESET}")
+        print(f"{BOLD}{CYAN}╠{'═' * 126}╣{RESET}")
+
         # Summary stats
         total_hands = sum(s['hands_played'] for s in self.stats.values())
         total_rebuys = sum(s.get('rebuys', 0) for s in self.stats.values())
         biggest_pot = max(s['biggest_pot'] for s in self.stats.values())
         best_hand = max(self.stats.values(), key=lambda x: x['best_hand_rank'])
-        
+
         summary_line = (
-            f"{DIM}  Total Hands:{RESET} {BOLD}{total_hands:>6}{RESET}  "
+            f"{DIM}Total Hands:{RESET} {BOLD}{total_hands:>7}{RESET}  "
             f"{DIM}|{RESET} {DIM}Total Rebuys:{RESET} {YELLOW}{total_rebuys:>6}{RESET}  "
-            f"{DIM}|{RESET} {DIM}Biggest Pot:{RESET} {GREEN}{biggest_pot:>8}{RESET}  "
-            f"{DIM}|{RESET} {DIM}Best Hand:{RESET} {MAGENTA}{best_hand['best_hand_name']:<14}{RESET}"
+            f"{DIM}|{RESET} {DIM}Biggest Pot:{RESET} {GREEN}{biggest_pot:>9}{RESET}  "
+            f"{DIM}|{RESET} {DIM}Best Hand:{RESET} {MAGENTA}{best_hand['best_hand_name']:<15}{RESET}"
         )
-        print(f"{BOLD}{CYAN}║{RESET}  {summary_line}  {BOLD}{CYAN}║{RESET}")
-        print(f"{BOLD}{CYAN}╠{'═' * 116}╣{RESET}")
+        print(f"{BOLD}{CYAN}║{RESET} {visual_ljust(summary_line, 124)} {BOLD}{CYAN}║{RESET}")
+        print(f"{BOLD}{CYAN}╠{'═' * 126}╣{RESET}")
         
-        # Table header
+        # Table header (carefully aligned column widths)
+        # Column widths: 3+12+22+8+8+7+6+7+6+9+15+11=114 + 12 spaces = 126
         header = (
-            f"  {BOLD}{'Rank':>3}{RESET}  "
-            f"{BOLD}{'Name':<15}{RESET}  "
-            f"{BOLD}{'Strategy':<18}{RESET}  "
-            f"{BOLD}{'Chips':>8}{RESET}  "
-            f"{BOLD}{'Net':>8}{RESET}  "
-            f"{BOLD}{'Played':>6}{RESET}  "
-            f"{BOLD}{'Won':>5}{RESET}  "
-            f"{BOLD}{'Win%':>6}{RESET}  "
-            f"{BOLD}{'Rebuys':>5}{RESET}  "
-            f"{BOLD}{'Big Pot':>8}{RESET}  "
-            f"{BOLD}{'Best Hand':<14}{RESET}  "
-            f"{BOLD}Status{RESET}"
+            f" {visual_rjust(f'{BOLD}#{RESET}', 3)} "
+            f"{visual_ljust(f'{BOLD}Name{RESET}', 12)} "
+            f"{visual_ljust(f'{BOLD}Strategy{RESET}', 22)} "
+            f"{visual_rjust(f'{BOLD}Chips{RESET}', 8)} "
+            f"{visual_rjust(f'{BOLD}Net{RESET}', 8)} "
+            f"{visual_rjust(f'{BOLD}Played{RESET}', 7)} "
+            f"{visual_rjust(f'{BOLD}Won{RESET}', 6)} "
+            f"{visual_rjust(f'{BOLD}Win%{RESET}', 7)} "
+            f"{visual_rjust(f'{BOLD}Rebuys{RESET}', 6)} "
+            f"{visual_rjust(f'{BOLD}Big Pot{RESET}', 9)} "
+            f"{visual_ljust(f'{BOLD}Best Hand{RESET}', 15)} "
+            f"{visual_ljust(f'{BOLD}Status{RESET}', 11)}"
         )
-        print(f"{BOLD}{CYAN}║{RESET}{header}  {BOLD}{CYAN}║{RESET}")
-        print(f"{BOLD}{CYAN}╠{'═' * 116}╣{RESET}")
+        print(f"{BOLD}{CYAN}║{RESET}{header}{BOLD}{CYAN}║{RESET}")
+        print(f"{BOLD}{CYAN}╠{'═' * 126}╣{RESET}")
         
         # Player rows - sorted by chips
         sorted_players = sorted(self.players, key=lambda p: p.chips, reverse=True)
-        
+
         for rank, p in enumerate(sorted_players, 1):
             s = self.stats[p.player_id]
             net = p.chips - s['starting_chips']
-            
-            # Color coding for net
+
+            # Color coding for net (with proper width formatting)
             if net > 0:
-                net_str = f"{GREEN}+{net}{RESET}"
+                net_str = f"{GREEN}{net:>8}{RESET}"
             elif net < 0:
-                net_str = f"{RED}{net}{RESET}"
+                net_str = f"{RED}{net:>8}{RESET}"
             else:
-                net_str = f"{DIM}0{RESET}"
-            
+                net_str = f"{DIM}{0:>8}{RESET}"
+
             # Win percentage
             played = s['hands_played']
             won = s['hands_won']
             if played > 0:
                 win_pct = won / played * 100
                 if win_pct >= 50:
-                    win_pct_str = f"{GREEN}{win_pct:>5.0f}%{RESET}"
+                    win_pct_str = f"{GREEN}{win_pct:>6.0f}%{RESET}"
                 elif win_pct >= 25:
-                    win_pct_str = f"{YELLOW}{win_pct:>5.0f}%{RESET}"
+                    win_pct_str = f"{YELLOW}{win_pct:>6.0f}%{RESET}"
                 else:
-                    win_pct_str = f"{RED}{win_pct:>5.0f}%{RESET}"
+                    win_pct_str = f"{RED}{win_pct:>6.0f}%{RESET}"
             else:
-                win_pct_str = f"{DIM}  -  {RESET}"
-            
+                win_pct_str = f"{DIM}{'-':>7}{RESET}"
+
             # Status with icon
             if p.chips > 0:
                 status = f"{GREEN}● Active{RESET}"
@@ -579,16 +594,16 @@ class Game:
                 status = f"{RED}✕ Bust #{s['bust_hand']}{RESET}"
             else:
                 status = f"{DIM}○ Out{RESET}"
-            
-            # Rebuys highlight
+
+            # Rebuys highlight (with proper width formatting)
             rebuys = s.get('rebuys', 0)
             if rebuys > 3:
-                rebuys_str = f"{RED}{rebuys:>5}{RESET}"
+                rebuys_str = f"{RED}{rebuys:>6}{RESET}"
             elif rebuys > 0:
-                rebuys_str = f"{YELLOW}{rebuys:>5}{RESET}"
+                rebuys_str = f"{YELLOW}{rebuys:>6}{RESET}"
             else:
-                rebuys_str = f"{DIM}{rebuys:>5}{RESET}"
-            
+                rebuys_str = f"{DIM}{rebuys:>6}{RESET}"
+
             # Rank indicator (right-aligned numbers with color for top 3)
             if rank == 1:
                 rank_str = f"{YELLOW}{rank:>3}{RESET}"
@@ -598,27 +613,28 @@ class Game:
                 rank_str = f"{MAGENTA}{rank:>3}{RESET}"
             else:
                 rank_str = f"{DIM}{rank:>3}{RESET}"
-            
+
             strategy_str = self._strategy_label(p)
-            
+
+            # Build row with visual width alignment
             row = (
-                f"  {rank_str}  "
-                f"{p.name:<15}  "
-                f"{DIM}{strategy_str:<18}{RESET}  "
-                f"{BOLD}{p.chips:>8}{RESET}  "
-                f"{net_str}  "
-                f"{DIM}{played:>6}{RESET}  "
-                f"{won:>5}  "
-                f"{win_pct_str}  "
-                f"{rebuys_str}  "
-                f"{DIM}{s['biggest_pot']:>8}{RESET}  "
-                f"{MAGENTA}{s['best_hand_name']:<14}{RESET}  "
-                f"{status}"
+                f" {visual_rjust(rank_str, 3)} "
+                f"{visual_ljust(p.name, 12)} "
+                f"{visual_ljust(f'{DIM}{strategy_str}{RESET}', 22)} "
+                f"{visual_rjust(f'{BOLD}{p.chips}{RESET}', 8)} "
+                f"{visual_rjust(net_str, 8)} "
+                f"{visual_rjust(f'{DIM}{played}{RESET}', 7)} "
+                f"{visual_rjust(f'{DIM}{won}{RESET}', 6)} "
+                f"{visual_rjust(win_pct_str, 7)} "
+                f"{visual_rjust(rebuys_str, 6)} "
+                f"{visual_rjust(f'{DIM}{s["biggest_pot"]}{RESET}', 9)} "
+                f"{visual_ljust(f'{MAGENTA}{s["best_hand_name"]}{RESET}', 15)} "
+                f"{visual_ljust(status, 11)}"
             )
-            print(f"{BOLD}{CYAN}║{RESET}{row}  {BOLD}{CYAN}║{RESET}")
-        
+            print(f"{BOLD}{CYAN}║{RESET}{row}{BOLD}{CYAN}║{RESET}")
+
         # Footer
-        print(f"{BOLD}{CYAN}╚{'═' * 116}╝{RESET}")
+        print(f"{BOLD}{CYAN}╚{'═' * 126}╝{RESET}")
         
         # Top performers section
         print()
