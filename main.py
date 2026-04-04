@@ -16,12 +16,8 @@ def _prompt_yn(prompt: str, default: bool = False) -> bool:
     return raw in ['y', 'yes'] if raw else default
 
 
-def main():
-    print("=" * 50)
-    print("  Welcome to Poker Terminal!")
-    print("=" * 50)
-
-    # ── Game mode ────────────────────────────────────────────────────────────
+def _collect_settings():
+    """Collect all game settings interactively. Returns a settings dict."""
     print("\nGame Mode:")
     print("  1. Tournament  (blinds escalate each level)")
     print("  2. Cash Game   (fixed blinds, unlimited rebuys)")
@@ -48,14 +44,12 @@ def main():
         batch_hands = 0
         sim_delay = 0.0
 
-    # ── Variant ──────────────────────────────────────────────────────────────
     short_deck = _prompt_yn("Short deck (6+ cards, Flush > Full House)? (y/n, default n): ")
 
-    # ── Player name ──────────────────────────────────────────────────────────
+    player_name = "Player 1"
     if not spectator:
         player_name = input("Enter your name (default Player 1): ").strip() or "Player 1"
 
-    # ── Bots ─────────────────────────────────────────────────────────────────
     num_bots = _prompt_int(f"How many bots? (default 3, max {MAX_BOTS}): ", 3)
     num_bots = min(num_bots, MAX_BOTS)
 
@@ -68,9 +62,8 @@ def main():
 
     shuffle_bots = _prompt_yn("Randomise bot seating? (y/n, default n): ")
 
-    # ── Table config ─────────────────────────────────────────────────────────
     starting_chips = _prompt_int("Starting chips? (default 1000): ", 1000)
-    big_blind      = _prompt_int("Big Blind? (default 20): ", 20)
+    big_blind = _prompt_int("Big Blind? (default 20): ", 20)
 
     if game_mode == 'tournament':
         print("\nBlind schedule:")
@@ -80,93 +73,134 @@ def main():
         hands_per_level = 2 if turbo == '2' else _prompt_int(
             "Hands per blind level? (default 5): ", 5)
     else:
-        hands_per_level = 9999  # cash game: never escalate
+        hands_per_level = 9999
 
     enable_ante = _prompt_yn("Enable ante? (y/n, default n): ")
 
-    # ── Build game ───────────────────────────────────────────────────────────
-    g = Game(big_blind=big_blind, hands_per_level=hands_per_level,
-             ante=enable_ante, live_output=True,
-             game_mode=game_mode, short_deck=short_deck)
+    return {
+        'game_mode': game_mode,
+        'spectator': spectator,
+        'batch_hands': batch_hands,
+        'sim_delay': sim_delay,
+        'short_deck': short_deck,
+        'player_name': player_name,
+        'num_bots': num_bots,
+        'difficulty': difficulty,
+        'shuffle_bots': shuffle_bots,
+        'starting_chips': starting_chips,
+        'big_blind': big_blind,
+        'hands_per_level': hands_per_level,
+        'enable_ante': enable_ante,
+    }
 
-    if not spectator:
-        g.add_player(TerminalPlayer("h1", player_name, starting_chips))
 
-    for bot in create_bots(num_bots, starting_chips, difficulty=difficulty, shuffled=shuffle_bots):
+def _build_game(settings: dict) -> tuple:
+    """Create a fresh Game instance and players. Returns (game, human_player)."""
+    g = Game(
+        big_blind=settings['big_blind'],
+        hands_per_level=settings['hands_per_level'],
+        ante=settings['enable_ante'],
+        live_output=True,
+        game_mode=settings['game_mode'],
+        short_deck=settings['short_deck'],
+    )
+
+    human = None
+    if not settings['spectator']:
+        g.add_player(TerminalPlayer("h1", settings['player_name'], settings['starting_chips']))
+        human = next(p for p in g.players if isinstance(p, TerminalPlayer))
+
+    for bot in create_bots(
+        settings['num_bots'], settings['starting_chips'],
+        difficulty=settings['difficulty'], shuffled=settings['shuffle_bots'],
+    ):
         g.add_player(bot)
 
-    human = next((p for p in g.players if isinstance(p, TerminalPlayer)), None)
+    return g, human
 
-    # ── Game loop ────────────────────────────────────────────────────────────
-    play_again = True
+
+def _run_session(g: Game, human, settings: dict):
+    """Run hands until the user quits or the session ends."""
     hands_simulated = 0
 
-    while play_again:
-        # Batch mode: skip screen clear and auto-run
-        if batch_hands > 0:
-            if hands_simulated >= batch_hands:
-                break
-            # Show progress every 10 hands
-            if hands_simulated % 10 == 0 or hands_simulated == 0:
-                print(f"\n--- Simulating hands {hands_simulated + 1}-{min(hands_simulated + 10, batch_hands)} ---")
-        else:
+    while True:
+        # Only clear screen for human interactive modes (tournament/cash)
+        if settings['batch_hands'] == 0 and not settings['spectator']:
             os.system('clear' if os.name == 'posix' else 'cls')
 
         g.start_game()
-        g.logs = []
 
         # Track simulated hands
-        if batch_hands > 0:
+        if settings['batch_hands'] > 0:
             hands_simulated += 1
-            if sim_delay > 0:
-                time.sleep(sim_delay)
+            if settings['sim_delay'] > 0:
+                time.sleep(settings['sim_delay'])
 
+        # Human rebuy
         if human and human.chips == 0:
-            ans = input(f"\nYou're out of chips! Rebuy for {starting_chips}? (y/n): ").strip().lower()
+            ans = input(
+                f"\nYou're out of chips! Rebuy for {settings['starting_chips']}? (y/n): "
+            ).strip().lower()
             if ans in ['y', 'yes']:
-                human.chips = starting_chips
-                g.stats[human.player_id]['starting_chips'] += starting_chips
+                human.chips = settings['starting_chips']
+                g.stats[human.player_id]['starting_chips'] += settings['starting_chips']
                 g.stats[human.player_id]['rebuys'] += 1
-                print(f"Rebought! You now have {starting_chips} chips.")
-        elif game_mode == 'cash':
-            # Cash game: any bust player can rebuy automatically
+                print(f"Rebought! You now have {settings['starting_chips']} chips.")
+
+        # Cash game auto-rebuy for bots
+        elif settings['game_mode'] == 'cash':
             for p in g.players:
                 if p.chips == 0 and not isinstance(p, TerminalPlayer):
-                    p.chips = starting_chips
-                    g.stats[p.player_id]['starting_chips'] += starting_chips
+                    p.chips = settings['starting_chips']
+                    g.stats[p.player_id]['starting_chips'] += settings['starting_chips']
                     g.stats[p.player_id]['rebuys'] += 1
 
         active_players = [p for p in g.players if p.chips > 0]
-        if batch_hands > 0:
-            # Batch mode: auto-rebuy busted bots to keep simulation running
+
+        # Batch mode: auto-rebuy and continue
+        if settings['batch_hands'] > 0:
             for p in g.players:
                 if p.chips == 0:
-                    p.chips = starting_chips
-                    g.stats[p.player_id]['starting_chips'] += starting_chips
+                    p.chips = settings['starting_chips']
+                    g.stats[p.player_id]['starting_chips'] += settings['starting_chips']
                     g.stats[p.player_id]['rebuys'] += 1
-            # Continue to next hand automatically
+            if hands_simulated >= settings['batch_hands']:
+                break
+            # Show progress every 10 hands
+            if hands_simulated % 10 == 0:
+                print(
+                    f"\n--- Simulating hands "
+                    f"{hands_simulated + 1}-{min(hands_simulated + 10, settings['batch_hands'])} ---"
+                )
             continue
-        elif spectator:
+
+        # Spectator mode
+        if settings['spectator']:
             if len(active_players) <= 1:
                 winner = active_players[0].name if active_players else "Nobody"
                 print(f"\nGame Over! {winner} wins!")
                 break
             ans = input("\nNext hand? (Enter to continue, q to quit): ").strip().lower()
             if ans == 'q':
-                play_again = False
-        else:
-            if len(active_players) <= 1:
-                winner = active_players[0].name if active_players else "Nobody"
-                print(f"\nGame Over! {winner} wins!")
                 break
-            ans = input("\nPlay another hand? (y/n): ").strip().lower()
-            if ans not in ['y', 'yes', '']:
-                play_again = False
+            continue
 
+        # Human mode
+        if len(active_players) <= 1:
+            winner = active_players[0].name if active_players else "Nobody"
+            print(f"\nGame Over! {winner} wins!")
+            break
+        ans = input("\nPlay another hand? (y/n): ").strip().lower()
+        if ans not in ['y', 'yes', '']:
+            break
+
+
+def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
+    """Print session stats and a quick summary."""
     g.print_stats()
-    if batch_hands > 0:
+
+    if settings['batch_hands'] > 0:
         print(f"\nSimulation complete: {hands_simulated} hands played")
-        # Show top performers
         print("\n--- Simulation Summary ---")
         sorted_players = sorted(g.players, key=lambda p: p.chips, reverse=True)
         if sorted_players:
@@ -176,6 +210,49 @@ def main():
             print(f"  Best hand: {best_hand['best_hand_name']}")
             total_rebuys = sum(s.get('rebuys', 0) for s in g.stats.values())
             print(f"  Total rebuys: {total_rebuys}")
+
+
+def main():
+    print("=" * 50)
+    print("  Welcome to Poker Terminal!")
+    print("=" * 50)
+
+    settings = None
+    session_num = 0
+
+    while True:
+        session_num += 1
+
+        # Collect settings on first run or when user chooses to change them
+        if settings is None:
+            if session_num > 1:
+                print(f"\n{'=' * 50}")
+                print(f"  Session #{session_num} — Same Settings")
+                print(f"{'=' * 50}")
+            settings = _collect_settings()
+        else:
+            # Reuse existing settings for replay
+            if session_num > 1:
+                print(f"\n{'=' * 50}")
+                print(f"  Session #{session_num} — Replaying with same settings")
+                print(f"{'=' * 50}")
+
+        g, human = _build_game(settings)
+        _run_session(g, human, settings)
+
+        hands_simulated = settings['batch_hands'] if settings['batch_hands'] > 0 else g.hand_count
+        _print_stats_and_summary(g, settings, hands_simulated)
+
+        print("\n" + "-" * 40)
+        ans = input(
+            "Play again with same settings? (y/n, r to change settings): "
+        ).strip().lower()
+        if ans == 'r':
+            settings = None  # Force re-prompt on next iteration
+            continue
+        if ans not in ['y', 'yes']:
+            break
+
     print("Thanks for playing!")
 
 

@@ -574,8 +574,13 @@ class Game:
         print(f"{BOLD}{CYAN}║{RESET}{header}{BOLD}{CYAN}║{RESET}")
         print(f"{BOLD}{CYAN}╠{'═' * 126}╣{RESET}")
         
-        # Player rows - sorted by chips
-        sorted_players = sorted(self.players, key=lambda p: p.chips, reverse=True)
+        # Player rows - sorted by net profit (not current chips)
+        # Net profit = current chips - total invested (starting + rebuys)
+        sorted_players = sorted(
+            self.players,
+            key=lambda p: p.chips - self.stats[p.player_id]['starting_chips'],
+            reverse=True,
+        )
 
         for rank, p in enumerate(sorted_players, 1):
             s = self.stats[p.player_id]
