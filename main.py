@@ -12,6 +12,8 @@ def _prompt_int(prompt: str, default: int, min_val: int = 1) -> int:
 
 
 def _prompt_yn(prompt: str, default: bool = False) -> bool:
+    """Prompt user for yes/no response with configurable default."""
+    # Show default in prompt: (y/n, default y) or (y/n, default n)
     raw = input(prompt).strip().lower()
     return raw in ['y', 'yes'] if raw else default
 
@@ -60,7 +62,7 @@ def _collect_settings():
     diff_input = input("Choose (default 2): ").strip()
     difficulty = {1: EASY, '1': EASY, 3: HARD, '3': HARD}.get(diff_input, NORMAL)
 
-    shuffle_bots = _prompt_yn("Randomise bot seating? (y/n, default n): ")
+    shuffle_bots = _prompt_yn("Randomise bot seating? (y/n, default y): ", default=True)
 
     starting_chips = _prompt_int("Starting chips? (default 1000): ", 1000)
     big_blind = _prompt_int("Big Blind? (default 20): ", 20)
