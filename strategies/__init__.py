@@ -41,3 +41,18 @@ def register(name: str):
         REGISTRY[name] = cls
         return cls
     return decorator
+
+
+# ── Re-export new modules for convenience ────────────────────────────────────
+from strategies.opponent_model import OpponentTracker, OpponentStats
+from strategies.draw_detection import detect_draws, advanced_equity, DrawInfo
+from strategies.betsizing import (
+    BetSize, calc_bet_size, choose_bet_size, choose_raise_size, stack_depth_label,
+)
+from strategies.dynamic_behavior import (
+    TiltState, TableImage, should_slow_play, should_semi_bluff,
+    desperation_factor, adjust_for_desperation,
+)
+from strategies.preflop_ranges import (
+    hand_in_range, should_3bet, position_to_range, should_defend_bb,
+)

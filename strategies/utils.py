@@ -5,24 +5,25 @@ Import these in any strategy — do not duplicate them.
 from typing import List
 from core.card import Card
 from core.evaluator import HandEvaluator
+from strategies.draw_detection import advanced_equity as _advanced_equity
 
 # Estimated equity per hand rank (index = HandRank value 0..9)
 # 0 = unset, 1 = High Card, ..., 9 = Straight Flush / Royal Flush
 _EQUITY_BY_RANK = [0.0, 0.25, 0.42, 0.57, 0.67, 0.76, 0.84, 0.91, 0.96, 0.99]
 
 
-def estimate_equity(hole_cards: List[Card], community_cards: List[Card]) -> float:
+def estimate_equity(hole_cards: List[Card], community_cards: List[Card],
+                    num_opponents: int = 1, short_deck: bool = False) -> float:
     """
-    Returns a rough win-probability estimate (0.0–1.0).
-    Pre-flop uses a rank-based heuristic; post-flop uses HandEvaluator.
+    Returns a win-probability estimate (0.0–1.0).
+    Uses advanced equity estimation with draw detection when community cards exist.
+    Falls back to simple preflop heuristic if no community cards.
     """
     if len(community_cards) == 0:
         ranks = [c.rank for c in hole_cards]
         is_strong = max(ranks) > 10 or abs(ranks[0] - ranks[1]) <= 1
         return 0.55 if is_strong else 0.32
-    score, _ = HandEvaluator.evaluate(hole_cards, community_cards)
-    rank = score[0] if score else 0
-    return _EQUITY_BY_RANK[min(rank, 9)]
+    return _advanced_equity(hole_cards, community_cards, num_opponents, short_deck)
 
 
 def pot_odds(min_call: int, pot_size: int) -> float:
