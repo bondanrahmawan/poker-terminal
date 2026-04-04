@@ -1,4 +1,5 @@
 import os
+import time
 from core.game import Game
 from players.terminal import TerminalPlayer
 from players.roster import create_bots, MAX_BOTS
@@ -25,16 +26,27 @@ def main():
     print("  1. Tournament  (blinds escalate each level)")
     print("  2. Cash Game   (fixed blinds, unlimited rebuys)")
     print("  3. Spectator   (watch bots play)")
+    print("  4. Simulation  (auto-run N hands, then show stats)")
     mode_input = input("Choose (default 1): ").strip()
     if mode_input == '2':
         game_mode = 'cash'
         spectator = False
+        batch_hands = 0
     elif mode_input == '3':
         game_mode = 'tournament'
         spectator = True
+        batch_hands = 0
+    elif mode_input == '4':
+        game_mode = 'tournament'
+        spectator = True
+        batch_hands = _prompt_int("Number of hands to simulate? (default 50): ", 50, min_val=1)
+        sim_speed = input("Simulation speed: 1=Instant, 2=Fast, 3=Normal (default 1): ").strip()
+        sim_delay = {'2': 0.3, '3': 0.8}.get(sim_speed, 0.0)
     else:
         game_mode = 'tournament'
         spectator = False
+        batch_hands = 0
+        sim_delay = 0.0
 
     # ── Variant ──────────────────────────────────────────────────────────────
     short_deck = _prompt_yn("Short deck (6+ cards, Flush > Full House)? (y/n, default n): ")
@@ -87,10 +99,27 @@ def main():
 
     # ── Game loop ────────────────────────────────────────────────────────────
     play_again = True
+    hands_simulated = 0
+
     while play_again:
-        os.system('clear' if os.name == 'posix' else 'cls')
+        # Batch mode: skip screen clear and auto-run
+        if batch_hands > 0:
+            if hands_simulated >= batch_hands:
+                break
+            # Show progress every 10 hands
+            if hands_simulated % 10 == 0 or hands_simulated == 0:
+                print(f"\n--- Simulating hands {hands_simulated + 1}-{min(hands_simulated + 10, batch_hands)} ---")
+        else:
+            os.system('clear' if os.name == 'posix' else 'cls')
+
         g.start_game()
         g.logs = []
+
+        # Track simulated hands
+        if batch_hands > 0:
+            hands_simulated += 1
+            if sim_delay > 0:
+                time.sleep(sim_delay)
 
         if human and human.chips == 0:
             ans = input(f"\nYou're out of chips! Rebuy for {starting_chips}? (y/n): ").strip().lower()
@@ -108,7 +137,16 @@ def main():
                     g.stats[p.player_id]['rebuys'] += 1
 
         active_players = [p for p in g.players if p.chips > 0]
-        if spectator:
+        if batch_hands > 0:
+            # Batch mode: auto-rebuy busted bots to keep simulation running
+            for p in g.players:
+                if p.chips == 0:
+                    p.chips = starting_chips
+                    g.stats[p.player_id]['starting_chips'] += starting_chips
+                    g.stats[p.player_id]['rebuys'] += 1
+            # Continue to next hand automatically
+            continue
+        elif spectator:
             if len(active_players) <= 1:
                 winner = active_players[0].name if active_players else "Nobody"
                 print(f"\nGame Over! {winner} wins!")
@@ -126,6 +164,18 @@ def main():
                 play_again = False
 
     g.print_stats()
+    if batch_hands > 0:
+        print(f"\nSimulation complete: {hands_simulated} hands played")
+        # Show top performers
+        print("\n--- Simulation Summary ---")
+        sorted_players = sorted(g.players, key=lambda p: p.chips, reverse=True)
+        if sorted_players:
+            winner = sorted_players[0]
+            print(f"  Top earner: {winner.name} ({winner.chips} chips)")
+            best_hand = max(g.stats.values(), key=lambda x: x['best_hand_rank'])
+            print(f"  Best hand: {best_hand['best_hand_name']}")
+            total_rebuys = sum(s.get('rebuys', 0) for s in g.stats.values())
+            print(f"  Total rebuys: {total_rebuys}")
     print("Thanks for playing!")
 
 

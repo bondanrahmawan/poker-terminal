@@ -59,6 +59,9 @@ class Game:
         self.player_roles: Dict[str, str] = {}   # player_id -> position label
         self.fold_streets: Dict[str, str] = {}   # player_id -> street name when folded
         self.current_street: str = 'preflop'
+        # Bot tracking — populated during showdown, consumed in _handle_end
+        self._last_hand_winners: List[str] = []
+        self._last_hand_winnings: Dict[str, int] = {}
 
     def log(self, msg: str):
         self.logs.append(msg)
@@ -426,6 +429,10 @@ class Game:
             winner = next(p for p in self.players if p.player_id == player_id)
             self.log(f">> {winner.name} wins {amount}")
 
+        # Store for bot record_hand_result() in _handle_end()
+        self._last_hand_winners = list(total_winnings.keys())
+        self._last_hand_winnings = dict(total_winnings)
+
         # Update stats
         for player_id, amount in total_winnings.items():
             s = self.stats[player_id]
@@ -448,6 +455,15 @@ class Game:
         for p in self.players:
             if p.chips == 0 and self.stats[p.player_id]['bust_hand'] is None:
                 self.stats[p.player_id]['bust_hand'] = self.hand_count
+
+        # Notify bots of hand results for dynamic behavior (tilt, image, tracking)
+        for p in self.players:
+            if hasattr(p, 'record_hand_result'):
+                won = p.player_id in self._last_hand_winners
+                amount = self._last_hand_winnings.get(p.player_id, 0)
+                # Rough estimate: was favorite if they had best hand at showdown
+                was_fav = won  # simplified; could be improved with pre-hand equity
+                p.record_hand_result(won, amount, was_fav)
 
         n = len(self.players)
         for _ in range(n):
