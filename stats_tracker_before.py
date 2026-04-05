@@ -35,9 +35,7 @@ class StatsTracker:
             'best_hand_name': '-',
             'bust_hand': None,
             'rebuys': 0,
-            'starting_chips': player.chips,  # Original buy-in (never changes)
-            'total_invested': player.chips,   # Tracks all rebuys + starting
-            'cumulative_net': 0,              # Accumulated net across session resets
+            'starting_chips': player.chips,
         }
 
     def increment_hands_played(self, player_id: str) -> None:
@@ -66,7 +64,7 @@ class StatsTracker:
         n = len(chips)
         if n == 0 or sum(chips) == 0:
             return 0.0
-
+        
         # Simple Gini formula for discrete data
         # G = (2 * sum(i * x_i) / (n * sum(x_i))) - (n + 1) / n
         # where x is sorted non-decreasingly
@@ -81,25 +79,23 @@ class StatsTracker:
             # Get the base strategy label (e.g., 'Balanced' from 'Balanced/0.8')
             full_label = self._strategy_label(p)
             label = full_label.split('/')[0] if '/' in full_label else full_label
-
+            
             s = self.stats.get(p.player_id, {})
-
+            
             if label not in archetypes:
                 archetypes[label] = {'net': 0, 'count': 0, 'played': 0, 'won': 0, 'survival': 0}
-
-            # Use cumulative_net for accurate profit/loss across session resets
-            net = self.get_cumulative_net(p.player_id, p.chips)
-            archetypes[label]['net'] += net
+            
+            archetypes[label]['net'] += (p.chips - s.get('starting_chips', 0))
             archetypes[label]['count'] += 1
             archetypes[label]['played'] += s.get('hands_played', 0)
             archetypes[label]['won'] += s.get('hands_won', 0)
             if p.chips > 0:
                 archetypes[label]['survival'] += 1
-
+                
         # Calculate rates
         for label in archetypes:
             archetypes[label]['survival_rate'] = (archetypes[label]['survival'] / archetypes[label]['count']) * 100
-
+            
         return archetypes
 
     def record_bust(self, player_id: str, hand_number: int) -> None:
@@ -107,44 +103,6 @@ class StatsTracker:
         if player_id in self.stats:
             if self.stats[player_id]['bust_hand'] is None:
                 self.stats[player_id]['bust_hand'] = hand_number
-
-    def record_session_rebuy(self, player_id: str) -> None:
-        """Record a rebuy for the current session."""
-        if player_id in self.stats:
-            self.stats[player_id]['rebuys'] += 1
-
-    def reset_session_state(self, players: List['Player']) -> None:
-        """
-        Reset per-session state while preserving accumulated stats.
-        Called when starting a new "table" in simulation mode.
-
-        This resets:
-        - Player chips to starting_chips
-        - Bust hand tracking (everyone is active again)
-        - Records cumulative_net before reset
-
-        Does NOT reset: hands_won, hands_played, chips_won, biggest_pot, best_hand
-        """
-        for p in players:
-            if p.player_id in self.stats:
-                # Record session profit/loss before reset
-                session_net = p.chips - self.stats[p.player_id]['starting_chips']
-                self.stats[p.player_id]['cumulative_net'] += session_net
-
-                # Reset chips to starting amount for new session
-                p.chips = self.stats[p.player_id]['starting_chips']
-                # Clear bust state for new session
-                self.stats[p.player_id]['bust_hand'] = None
-
-    def get_cumulative_net(self, player_id: str, current_chips: int) -> int:
-        """
-        Get total net profit/loss for a player across all sessions.
-        cumulative_net (from completed sessions) + current session net.
-        """
-        if player_id in self.stats:
-            session_net = current_chips - self.stats[player_id]['starting_chips']
-            return self.stats[player_id]['cumulative_net'] + session_net
-        return 0
 
     @staticmethod
     def _strategy_label(player: 'Player') -> str:
@@ -324,7 +282,7 @@ class StatsTracker:
             best_hand_player = max(players_with_stats, key=lambda p: self.stats[p.player_id]['best_hand_rank'])
             print(f"  {_DIM}Best Hand:{_RESET}  {_BOLD}{_MAGENTA}{best_hand_player.name}{_RESET} ({_YELLOW}{self.stats[best_hand_player.player_id]['best_hand_name']}{_RESET})")
 
-            # Most active (most hands played)
+            # Most aggressive (most hands played)
             if eligible:
                 most_active = max(eligible, key=lambda p: self.stats[p.player_id]['hands_played'])
                 print(f"  {_DIM}Most Active:{_RESET}  {_BOLD}{_CYAN}{most_active.name}{_RESET} ({_YELLOW}{self.stats[most_active.player_id]['hands_played']} hands{_RESET})")

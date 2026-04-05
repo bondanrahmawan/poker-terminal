@@ -37,7 +37,8 @@ class Game:
 
     def __init__(self, big_blind: int, hands_per_level: int = 5,
                  ante: bool = False, live_output: bool = False,
-                 game_mode: str = 'tournament', short_deck: bool = False) -> None:
+                 game_mode: str = 'tournament', short_deck: bool = False,
+                 blind_reset_interval: int = 0) -> None:
         """
         Args:
             big_blind: Big blind amount
@@ -46,6 +47,7 @@ class Game:
             live_output: Whether to print output in real-time
             game_mode: 'tournament' or 'cash'
             short_deck: Use 36-card deck (6+)
+            blind_reset_interval: Reset blinds every N hands (0=never, used in simulation mode)
         """
         self.players: List[Player] = []
         self.deck = Deck(min_rank=6 if short_deck else 2)
@@ -65,6 +67,7 @@ class Game:
         self.pending_msg: str = ""
         self.game_mode = game_mode
         self.short_deck = short_deck
+        self.blind_reset_interval = blind_reset_interval  # For simulation mode
 
         # Per-hand tracking
         self.player_roles: Dict[str, str] = {}
@@ -462,6 +465,21 @@ class Game:
                 self.bet_manager.big_blind = self.big_blind
                 self.bet_manager.min_raise = self.big_blind
                 self.pending_msg = msg
+            
+            # Reset blinds periodically in simulation mode to prevent snowballing
+            if self.blind_reset_interval > 0 and self.hand_count % self.blind_reset_interval == 0:
+                # Full session reset: blinds, chips, bust states (like new table)
+                self.blind_scheduler.reset()
+                self.big_blind = self.blind_scheduler.big_blind
+                self.bet_manager.big_blind = self.big_blind
+                self.bet_manager.min_raise = self.big_blind
+                
+                # Reset player state for new session (chips, active status, bust tracking)
+                self.stats_tracker.reset_session_state(self.players)
+                
+                # Log session boundary (even in simulation mode, stored in logs)
+                session_num = self.hand_count // self.blind_reset_interval
+                self.log(f"*** SESSION {session_num + 1} START — Fresh table, blinds reset ***")
 
         self.log("Hand complete.")
 

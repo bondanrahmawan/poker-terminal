@@ -30,21 +30,26 @@ def _collect_settings():
         game_mode = 'cash'
         spectator = False
         batch_hands = 0
+        blind_reset = 0
     elif mode_input == '3':
         game_mode = 'tournament'
         spectator = True
         batch_hands = 0
+        blind_reset = 0
     elif mode_input == '4':
         game_mode = 'tournament'
         spectator = True
         batch_hands = _prompt_int("Number of hands to simulate? (default 50): ", 50, min_val=1)
         sim_speed = input("Simulation speed: 1=Instant, 2=Fast, 3=Normal (default 1): ").strip()
         sim_delay = {'2': 0.3, '3': 0.8}.get(sim_speed, 0.0)
+        # Blind reset interval for simulation mode
+        blind_reset = _prompt_int("Reset blinds every N hands? (0=never, default 20): ", 20, min_val=0)
     else:
         game_mode = 'tournament'
         spectator = False
         batch_hands = 0
         sim_delay = 0.0
+        blind_reset = 0
 
     short_deck = _prompt_yn("Short deck (6+ cards, Flush > Full House)? (y/n, default n): ")
 
@@ -84,6 +89,7 @@ def _collect_settings():
         'spectator': spectator,
         'batch_hands': batch_hands,
         'sim_delay': sim_delay,
+        'blind_reset_interval': blind_reset if mode_input == '4' else 0,
         'short_deck': short_deck,
         'player_name': player_name,
         'num_bots': num_bots,
@@ -108,6 +114,7 @@ def _build_game(settings: dict) -> tuple:
         live_output=not is_simulation,  # Suppress output for simulation
         game_mode=settings['game_mode'],
         short_deck=settings['short_deck'],
+        blind_reset_interval=settings.get('blind_reset_interval', 0),
     )
 
     human = None
@@ -148,7 +155,7 @@ def _run_session(g: Game, human, settings: dict):
             ).strip().lower()
             if ans in ['y', 'yes']:
                 human.chips = settings['starting_chips']
-                g.stats[human.player_id]['starting_chips'] += settings['starting_chips']
+                g.stats[human.player_id]['total_invested'] += settings['starting_chips']
                 g.stats[human.player_id]['rebuys'] += 1
                 print(f"Rebought! You now have {settings['starting_chips']} chips.")
 
@@ -157,7 +164,7 @@ def _run_session(g: Game, human, settings: dict):
             for p in g.players:
                 if p.chips == 0 and not isinstance(p, TerminalPlayer):
                     p.chips = settings['starting_chips']
-                    g.stats[p.player_id]['starting_chips'] += settings['starting_chips']
+                    g.stats[p.player_id]['total_invested'] += settings['starting_chips']
                     g.stats[p.player_id]['rebuys'] += 1
 
         active_players = [p for p in g.players if p.chips > 0]
@@ -167,7 +174,7 @@ def _run_session(g: Game, human, settings: dict):
             for p in g.players:
                 if p.chips == 0:
                     p.chips = settings['starting_chips']
-                    g.stats[p.player_id]['starting_chips'] += settings['starting_chips']
+                    g.stats[p.player_id]['total_invested'] += settings['starting_chips']
                     g.stats[p.player_id]['rebuys'] += 1
             if hands_simulated >= settings['batch_hands']:
                 break
@@ -233,18 +240,18 @@ def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
         
         sorted_players = sorted(
             g.players,
-            key=lambda p: p.chips - g.stats[p.player_id]['starting_chips'],
+            key=lambda p: g.stats_tracker.get_cumulative_net(p.player_id, p.chips),
             reverse=True
         )
-        
+
         for rank, p in enumerate(sorted_players, 1):
             s = g.stats[p.player_id]
-            net = p.chips - s['starting_chips']
+            net = g.stats_tracker.get_cumulative_net(p.player_id, p.chips)
             played = s['hands_played']
             won = s['hands_won']
             win_pct = (won / played * 100) if played > 0 else 0
             status = "Active" if p.chips > 0 else f"Bust #{s['bust_hand']}"
-            
+
             net_str = f"+{net:,}" if net > 0 else f"{net:,}"
             print(f"  {rank:>4} | {p.name:<15} | {g.stats_tracker._strategy_label(p):<18} | {s['starting_chips']:>8,} | {p.chips:>8,} | {net_str:>10} | {won:>5} | {played:>6} | {win_pct:>5.1f}% | {status:<12}")
         
@@ -306,15 +313,67 @@ def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
         print(f"{'=' * 128}\n")
         
     else:
-        # Non-simulation mode: show regular stats
+        # Non-simulation mode: show enhanced stats with game theory
         g.print_stats()
-        print("\n--- Session Summary ---")
+        
+        # Game Theory Analysis
+        print(f"\n{'GAME THEORY ANALYSIS':^128}")
+        print(f"{'─' * 128}")
+        
+        # 1. Gini Coefficient
+        gini = g.stats_tracker.calculate_gini(g.players)
+        print(f"\n  1. WEALTH CONCENTRATION (Gini Index): {gini:.3f}")
+        if gini > 0.7:
+            print(f"     → EXTREME inequality — Winner-take-all dynamics")
+        elif gini > 0.4:
+            print(f"     → HIGH inequality — Strategic dominance by few players")
+        elif gini > 0.2:
+            print(f"     → MODERATE inequality — Balanced competition")
+        else:
+            print(f"     → LOW inequality — Healthy strategic diversity")
+        
+        # 2. Strategy Archetype Analysis
+        print(f"\n  2. STRATEGIC ARCHETYPE PERFORMANCE")
+        arch_stats = g.stats_tracker.get_archetype_stats(g.players)
+        print(f"  {'Archetype':<20} | {'Avg Net':>10} | {'Win Rate':>9} | {'Survival':>9} | {'Hands':>7}")
+        print(f"  {'─' * 20}-+-{'─' * 10}-+-{'─' * 9}-+-{'─' * 9}-+-{'─' * 7}")
+        
+        sorted_arch = sorted(arch_stats.items(), key=lambda x: x[1]['net']/max(1, x[1]['count']), reverse=True)
+        for label, data in sorted_arch:
+            avg_net = data['net'] / max(1, data['count'])
+            win_rate = (data['won'] / max(1, data['played'])) * 100
+            print(f"  {label:<20} | {avg_net:>+10,.0f} | {win_rate:>8.1f}% | {data['survival_rate']:>8.0f}% | {data['played']:>7}")
+        
+        # 3. Key Insights
+        print(f"\n  3. KEY INSIGHTS")
+        
+        if sorted_arch:
+            most_profitable = sorted_arch[0]
+            least_profitable = sorted_arch[-1]
+            print(f"     • Most profitable strategy: {most_profitable[0]} (+{most_profitable[1]['net']/max(1, most_profitable[1]['count']):,.0f} avg net)")
+            print(f"     • Least profitable strategy: {least_profitable[0]} ({least_profitable[1]['net']/max(1, least_profitable[1]['count']):+,} avg net)")
+        
         sorted_players = sorted(g.players, key=lambda p: p.chips, reverse=True)
         if sorted_players:
-            winner = sorted_players[0]
-            print(f"  Top earner: {winner.name} ({winner.chips} chips)")
-            best_hand = max(g.stats.values(), key=lambda x: x['best_hand_rank'])
-            print(f"  Best hand: {best_hand['best_hand_name']}")
+            eligible = [p for p in g.players if g.stats[p.player_id]['hands_played'] >= 5]
+            if eligible:
+                best_wr_player = max(eligible, key=lambda p: g.stats[p.player_id]['hands_won'] / max(1, g.stats[p.player_id]['hands_played']))
+                best_wr = g.stats[best_wr_player.player_id]['hands_won'] / g.stats[best_wr_player.player_id]['hands_played'] * 100
+                print(f"     • Best win rate: {best_wr_player.name} ({best_wr:.1f}%)")
+            
+            chip_leader = max(g.players, key=lambda p: p.chips)
+            chip_profit = chip_leader.chips - g.stats[chip_leader.player_id]['starting_chips']
+            print(f"     • Chip leader: {chip_leader.name} ({chip_leader.chips:,} chips, +{chip_profit:,})")
+            
+            best_hand_player = max(g.players, key=lambda p: g.stats[p.player_id]['best_hand_rank'])
+            best_hand_name = g.stats[best_hand_player.player_id]['best_hand_name']
+            if best_hand_name and best_hand_name != '-':
+                print(f"     • Best hand: {best_hand_player.name} ({best_hand_name})")
+            
+            high_rebuy = [p for p in g.players if g.stats[p.player_id].get('rebuys', 0) > 0]
+            if high_rebuy:
+                print(f"     • Players with rebuys: {', '.join(f'{p.name} ({g.stats[p.player_id]["rebuys"]})' for p in high_rebuy)}")
+        
         print()
 
 
