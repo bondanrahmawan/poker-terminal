@@ -8,6 +8,7 @@ from strategies.engine import (
     TightPassiveStrategy, TightAggressiveStrategy,
     LoosePassiveStrategy, LooseAggressiveStrategy,
     BalancedStrategy, NitStrategy,
+    ManiacStrategy, TrapperStrategy,
 )
 from strategies.difficulty import EASY, NORMAL, HARD
 
@@ -23,6 +24,8 @@ _ROSTER = [
     ("Bot_Hank",    lambda d: LooseAggressiveStrategy(d)),
     ("Bot_Iris",    lambda d: BalancedStrategy(EASY if d <= NORMAL else d)),
     ("Bot_Jack",    lambda d: TightAggressiveStrategy(EASY if d <= NORMAL else d)),
+    ("Bot_Mike",    lambda d: ManiacStrategy(d)),
+    ("Bot_Victoria", lambda d: TrapperStrategy(d)),
 ]
 
 MAX_BOTS = len(_ROSTER)

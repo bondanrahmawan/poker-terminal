@@ -12,7 +12,7 @@ from strategies.engine import (
     DesignedBotStrategy,
     TightPassiveStrategy, TightAggressiveStrategy,
     LoosePassiveStrategy, LooseAggressiveStrategy,
-    ManiacStrategy, NitStrategy, BalancedStrategy,
+    ManiacStrategy, NitStrategy, BalancedStrategy, TrapperStrategy,
 )
 from strategies.profile import PROFILES, StyleProfile
 from strategies.hand_score import score_starting_hand
@@ -418,6 +418,71 @@ class TestNitStrategy:
 
 
 # ---------------------------------------------------------------------------
+# TrapperStrategy
+# ---------------------------------------------------------------------------
+
+class TestTrapperStrategy:
+    def test_slow_plays_strong_hand_postflop(self):
+        """Trapper should check-call with strong hands instead of betting."""
+        import random
+        random.seed(42)
+        strategy = TrapperStrategy()
+        # Simulate postflop with strong hand, no bet to face
+        gs = state(
+            min_call=0, pot_size=100,
+            community_cards=[Card(Rank.ACE, Suit.SPADES), Card(Rank.KING, Suit.HEARTS), Card(Rank.ACE, Suit.CLUBS)]
+        )
+        view = make_view(hole_cards=[Card(Rank.ACE, Suit.DIAMONDS), Card(Rank.QUEEN, Suit.SPADES)])  # Trips
+        checks = sum(1 for _ in range(100)
+                     if strategy.decide(gs, view)[0] == PlayerAction.CHECK)
+        # Trapper has 0.75 slow_play_freq, should check most of the time with trips
+        assert checks > 50  # Should check more than half the time
+
+    def test_calls_when_facing_bet_with_monster(self):
+        """Trapper should call (not raise) when facing a bet with a monster."""
+        import random
+        random.seed(55)
+        strategy = TrapperStrategy()
+        gs = state(
+            min_call=50, pot_size=200,
+            community_cards=[Card(Rank.ACE, Suit.SPADES), Card(Rank.KING, Suit.HEARTS), Card(Rank.ACE, Suit.CLUBS)]
+        )
+        view = make_view(
+            chips=1000,
+            hole_cards=[Card(Rank.ACE, Suit.DIAMONDS), Card(Rank.QUEEN, Suit.SPADES)]
+        )
+        calls = sum(1 for _ in range(100)
+                    if strategy.decide(gs, view)[0] == PlayerAction.CALL)
+        # Should call most of the time to trap
+        assert calls > 40
+
+    def test_raises_less_than_balanced(self):
+        """Trapper should raise less frequently than Balanced with same strong hand."""
+        import random
+        random.seed(77)
+        trapper = TrapperStrategy()
+        balanced = BalancedStrategy()
+        gs = state(
+            min_call=0, pot_size=100,
+            community_cards=[Card(Rank.ACE, Suit.SPADES), Card(Rank.KING, Suit.HEARTS), Card(Rank.ACE, Suit.CLUBS)]
+        )
+        view = make_view(hole_cards=[Card(Rank.ACE, Suit.DIAMONDS), Card(Rank.QUEEN, Suit.SPADES)])
+        trapper_raises = sum(1 for _ in range(100) if trapper.decide(gs, view)[0] == PlayerAction.RAISE)
+        balanced_raises = sum(1 for _ in range(100) if balanced.decide(gs, view)[0] == PlayerAction.RAISE)
+        assert trapper_raises < balanced_raises
+
+    def test_folds_weak_hand(self):
+        """Trapper should fold when completely out of range."""
+        import random
+        random.seed(88)
+        strategy = TrapperStrategy()
+        gs = state(min_call=100, pot_size=300)
+        folds = sum(1 for _ in range(100)
+                    if strategy.decide(gs, make_view(hole_cards=WEAK_HAND))[0] == PlayerAction.FOLD)
+        assert folds >= 80  # Trapper is selective, folds weak hands facing bets
+
+
+# ---------------------------------------------------------------------------
 # Difficulty
 # ---------------------------------------------------------------------------
 
@@ -451,6 +516,7 @@ class TestCrossStrategy:
             TightPassiveStrategy(), TightAggressiveStrategy(),
             LoosePassiveStrategy(), LooseAggressiveStrategy(),
             ManiacStrategy(), NitStrategy(), BalancedStrategy(),
+            TrapperStrategy(),
         ]
         game_states = [
             state(min_call=0),

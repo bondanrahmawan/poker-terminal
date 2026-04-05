@@ -98,11 +98,14 @@ def _collect_settings():
 
 def _build_game(settings: dict) -> tuple:
     """Create a fresh Game instance and players. Returns (game, human_player)."""
+    # In simulation mode, suppress per-hand output
+    is_simulation = settings.get('batch_hands', 0) > 0
+    
     g = Game(
         big_blind=settings['big_blind'],
         hands_per_level=settings['hands_per_level'],
         ante=settings['enable_ante'],
-        live_output=True,
+        live_output=not is_simulation,  # Suppress output for simulation
         game_mode=settings['game_mode'],
         short_deck=settings['short_deck'],
     )
@@ -198,20 +201,121 @@ def _run_session(g: Game, human, settings: dict):
 
 
 def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
-    """Print session stats and a quick summary."""
-    g.print_stats()
-
+    """Print session stats and game theory analysis for simulation mode."""
     if settings['batch_hands'] > 0:
-        print(f"\nSimulation complete: {hands_simulated} hands played")
-        print("\n--- Simulation Summary ---")
+        # Simulation mode: comprehensive game theory analysis only
+        print("\n" + "=" * 128)
+        print(f"{'SIMULATION REPORT':^128}")
+        print(f"{'─' * 128}")
+        
+        # Basic metrics
+        print(f"\n{'BASIC METRICS'}")
+        print(f"{'─' * 60}")
+        total_hands = sum(s['hands_played'] for s in g.stats.values())
+        total_rebuys = sum(s.get('rebuys', 0) for s in g.stats.values())
+        avg_rebuys = total_rebuys / len(g.players) if g.players else 0
+        biggest_pot = max(s['biggest_pot'] for s in g.stats.values())
+        best_hand = max(g.stats.values(), key=lambda x: x['best_hand_rank'])
+        
+        print(f"  Hands Simulated:      {hands_simulated:>8}")
+        print(f"  Players at Table:     {len(g.players):>8}")
+        print(f"  Starting Chips:       {settings['starting_chips']:>8,}")
+        print(f"  Big Blind:            {settings['big_blind']:>8}")
+        print(f"  Total Rebuys:         {total_rebuys:>8,}  (avg: {avg_rebuys:.1f}/player)")
+        print(f"  Biggest Single Pot:   {biggest_pot:>8,}")
+        print(f"  Best Hand Seen:       {best_hand['best_hand_name']:>15}")
+        
+        # Player performance table
+        print(f"\n{'PLAYER PERFORMANCE'}")
+        print(f"{'─' * 128}")
+        print(f"  {'Rank':>4} | {'Player':<15} | {'Strategy':<18} | {'Start':>8} | {'Final':>8} | {'Net':>10} | {'Won':>5} | {'Played':>6} | {'Win%':>6} | {'Status':<12}")
+        print(f"  {'─' * 4}-+-{'─' * 15}-+-{'─' * 18}-+-{'─' * 8}-+-{'─' * 8}-+-{'─' * 10}-+-{'─' * 5}-+-{'─' * 6}-+-{'─' * 6}-+-{'─' * 12}")
+        
+        sorted_players = sorted(
+            g.players,
+            key=lambda p: p.chips - g.stats[p.player_id]['starting_chips'],
+            reverse=True
+        )
+        
+        for rank, p in enumerate(sorted_players, 1):
+            s = g.stats[p.player_id]
+            net = p.chips - s['starting_chips']
+            played = s['hands_played']
+            won = s['hands_won']
+            win_pct = (won / played * 100) if played > 0 else 0
+            status = "Active" if p.chips > 0 else f"Bust #{s['bust_hand']}"
+            
+            net_str = f"+{net:,}" if net > 0 else f"{net:,}"
+            print(f"  {rank:>4} | {p.name:<15} | {g.stats_tracker._strategy_label(p):<18} | {s['starting_chips']:>8,} | {p.chips:>8,} | {net_str:>10} | {won:>5} | {played:>6} | {win_pct:>5.1f}% | {status:<12}")
+        
+        # Game Theory Analysis
+        print(f"\n{'GAME THEORY ANALYSIS'}")
+        print(f"{'─' * 128}")
+        
+        # 1. Gini Coefficient
+        gini = g.stats_tracker.calculate_gini(g.players)
+        print(f"\n  1. WEALTH CONCENTRATION (Gini Index): {gini:.3f}")
+        if gini > 0.7:
+            print(f"     → EXTREME inequality — Winner-take-all dynamics")
+        elif gini > 0.4:
+            print(f"     → HIGH inequality — Strategic dominance by few players")
+        elif gini > 0.2:
+            print(f"     → MODERATE inequality — Balanced competition")
+        else:
+            print(f"     → LOW inequality — Healthy strategic diversity")
+        
+        # 2. Strategy Archetype Analysis
+        print(f"\n  2. STRATEGIC ARCHETYPE PERFORMANCE")
+        arch_stats = g.stats_tracker.get_archetype_stats(g.players)
+        print(f"  {'Archetype':<20} | {'Avg Net':>10} | {'Win Rate':>9} | {'Survival':>9} | {'Hands':>7}")
+        print(f"  {'─' * 20}-+-{'─' * 10}-+-{'─' * 9}-+-{'─' * 9}-+-{'─' * 7}")
+        
+        sorted_arch = sorted(arch_stats.items(), key=lambda x: x[1]['net']/max(1, x[1]['count']), reverse=True)
+        for label, data in sorted_arch:
+            avg_net = data['net'] / max(1, data['count'])
+            win_rate = (data['won'] / max(1, data['played'])) * 100
+            print(f"  {label:<20} | {avg_net:>+10,.0f} | {win_rate:>8.1f}% | {data['survival_rate']:>8.0f}% | {data['played']:>7}")
+        
+        # 3. Key Insights
+        print(f"\n  3. KEY INSIGHTS")
+        
+        if sorted_arch:
+            most_profitable = sorted_arch[0]
+            least_profitable = sorted_arch[-1]
+            print(f"     • Most profitable strategy: {most_profitable[0]} (+{most_profitable[1]['net']/max(1, most_profitable[1]['count']):,.0f} avg net)")
+            print(f"     • Least profitable strategy: {least_profitable[0]} ({least_profitable[1]['net']/max(1, least_profitable[1]['count']):+,} avg net)")
+        
+        if sorted_players:
+            best_wr_player = max(
+                [p for p in g.players if g.stats[p.player_id]['hands_played'] > 0],
+                key=lambda p: g.stats[p.player_id]['hands_won'] / max(1, g.stats[p.player_id]['hands_played'])
+            )
+            best_wr = g.stats[best_wr_player.player_id]['hands_won'] / g.stats[best_wr_player.player_id]['hands_played'] * 100
+            print(f"     • Best win rate: {best_wr_player.name} ({best_wr:.1f}%)")
+        
+        chip_leader = max(g.players, key=lambda p: p.chips)
+        chip_profit = chip_leader.chips - g.stats[chip_leader.player_id]['starting_chips']
+        print(f"     • Chip leader: {chip_leader.name} ({chip_leader.chips:,} chips, +{chip_profit:,})")
+        
+        high_rebuy = [p for p in g.players if g.stats[p.player_id].get('rebuys', 0) > 3]
+        if high_rebuy:
+            print(f"     • High rebuy players (>3): {', '.join(p.name for p in high_rebuy)}")
+        
+        print(f"\n{'=' * 128}")
+        print(f"{'End of Simulation Report':^128}")
+        print(f"{'=' * 128}\n")
+        
+    else:
+        # Non-simulation mode: show regular stats
+        g.print_stats()
+        print("\n--- Session Summary ---")
         sorted_players = sorted(g.players, key=lambda p: p.chips, reverse=True)
         if sorted_players:
             winner = sorted_players[0]
             print(f"  Top earner: {winner.name} ({winner.chips} chips)")
             best_hand = max(g.stats.values(), key=lambda x: x['best_hand_rank'])
             print(f"  Best hand: {best_hand['best_hand_name']}")
-            total_rebuys = sum(s.get('rebuys', 0) for s in g.stats.values())
-            print(f"  Total rebuys: {total_rebuys}")
+        print()
 
 
 def main():

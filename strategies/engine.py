@@ -310,7 +310,19 @@ class DesignedBotStrategy(BotStrategy):
         is_draw = draw.total_outs > 0
         is_strong_draw = draw.is_strong_draw
 
-        if min_call == 0 and should_slow_play(equity, eff_aggression, self.image):
+        # Slow-play logic: deliberately under-aggress with strong hands
+        slow_play_tendency = getattr(self.profile, 'slow_play_freq', 0.0)
+        is_slow_playing = False
+        if is_strong_made and slow_play_tendency > 0:
+            if random.random() < slow_play_tendency:
+                is_slow_playing = True
+                # If facing a bet, slow-play by calling instead of raising
+                if min_call > 0:
+                    return self._make_call(player.chips, min_call)
+                # If no bet, check behind to trap
+                return PlayerAction.CHECK, 0
+
+        if min_call == 0 and not is_slow_playing and should_slow_play(equity, eff_aggression, self.image):
             return PlayerAction.CHECK, 0
 
         # ── Facing a bet ──
@@ -390,8 +402,8 @@ class DesignedBotStrategy(BotStrategy):
             if isinstance(amt, int):
                 return self._action_raise_or_all_in(amt, player.chips)
 
-        # Value bet
-        if is_made_hand and equity >= 0.45:
+        # Value bet (skip if slow-playing)
+        if is_made_hand and equity >= 0.45 and not is_slow_playing:
             self.image.record_raise()
             size, amt = choose_bet_size(
                 pot_size, min_call, min_raise, player.chips, equity,
@@ -536,3 +548,13 @@ class NitStrategy(DesignedBotStrategy):
 class BalancedStrategy(DesignedBotStrategy):
     def __init__(self, difficulty: float = 0.6):
         super().__init__(PROFILES['balanced'], difficulty)
+
+
+@register('trapper')
+class TrapperStrategy(DesignedBotStrategy):
+    """
+    Deceptive player who deliberately slow-plays strong hands to trap opponents.
+    Low aggression but high call frequency — invites action into monsters.
+    """
+    def __init__(self, difficulty: float = 0.6):
+        super().__init__(PROFILES['trapper'], difficulty)

@@ -58,6 +58,46 @@ class StatsTracker:
                 self.stats[player_id]['best_hand_rank'] = rank
                 self.stats[player_id]['best_hand_name'] = hand_name
 
+    def calculate_gini(self, players: List['Player']) -> float:
+        """Calculate Gini Coefficient: 0 (equal) to 1 (one player has everything)."""
+        chips = sorted([max(0, p.chips) for p in players])
+        n = len(chips)
+        if n == 0 or sum(chips) == 0:
+            return 0.0
+        
+        # Simple Gini formula for discrete data
+        # G = (2 * sum(i * x_i) / (n * sum(x_i))) - (n + 1) / n
+        # where x is sorted non-decreasingly
+        sum_chips = sum(chips)
+        weighted_sum = sum((i + 1) * x for i, x in enumerate(chips))
+        return (2.0 * weighted_sum) / (n * sum_chips) - (n + 1.0) / n
+
+    def get_archetype_stats(self, players: List['Player']) -> Dict[str, dict]:
+        """Aggregate stats by strategy profile name."""
+        archetypes = {}
+        for p in players:
+            # Get the base strategy label (e.g., 'Balanced' from 'Balanced/0.8')
+            full_label = self._strategy_label(p)
+            label = full_label.split('/')[0] if '/' in full_label else full_label
+            
+            s = self.stats.get(p.player_id, {})
+            
+            if label not in archetypes:
+                archetypes[label] = {'net': 0, 'count': 0, 'played': 0, 'won': 0, 'survival': 0}
+            
+            archetypes[label]['net'] += (p.chips - s.get('starting_chips', 0))
+            archetypes[label]['count'] += 1
+            archetypes[label]['played'] += s.get('hands_played', 0)
+            archetypes[label]['won'] += s.get('hands_won', 0)
+            if p.chips > 0:
+                archetypes[label]['survival'] += 1
+                
+        # Calculate rates
+        for label in archetypes:
+            archetypes[label]['survival_rate'] = (archetypes[label]['survival'] / archetypes[label]['count']) * 100
+            
+        return archetypes
+
     def record_bust(self, player_id: str, hand_number: int) -> None:
         """Record the hand number when a player busts."""
         if player_id in self.stats:
