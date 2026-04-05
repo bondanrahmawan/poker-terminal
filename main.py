@@ -207,6 +207,121 @@ def _run_session(g: Game, human, settings: dict):
             break
 
 
+def _print_gini_coefficient(g: Game):
+    """Print Gini coefficient analysis."""
+    gini = g.stats_tracker.calculate_gini(g.players)
+    print(f"\n  1. WEALTH CONCENTRATION (Gini Index): {gini:.3f}")
+    if gini > 0.7:
+        print(f"     → EXTREME inequality — Winner-take-all dynamics")
+    elif gini > 0.4:
+        print(f"     → HIGH inequality — Strategic dominance by few players")
+    elif gini > 0.2:
+        print(f"     → MODERATE inequality — Balanced competition")
+    else:
+        print(f"     → LOW inequality — Healthy strategic diversity")
+
+
+def _print_archetype_analysis(g: Game):
+    """Print strategy archetype performance analysis."""
+    print(f"\n  2. STRATEGIC ARCHETYPE PERFORMANCE")
+    arch_stats = g.stats_tracker.get_archetype_stats(g.players)
+    print(f"  {'Archetype':<20} | {'Avg Net':>10} | {'Win Rate':>9} | {'Survival':>9} | {'Hands':>7}")
+    print(f"  {'─' * 20}-+-{'─' * 10}-+-{'─' * 9}-+-{'─' * 9}-+-{'─' * 7}")
+
+    sorted_arch = sorted(arch_stats.items(), key=lambda x: x[1]['net']/max(1, x[1]['count']), reverse=True)
+    for label, data in sorted_arch:
+        avg_net = data['net'] / max(1, data['count'])
+        win_rate = (data['won'] / max(1, data['played'])) * 100
+        print(f"  {label:<20} | {avg_net:>+10,.0f} | {win_rate:>8.1f}% | {data['survival_rate']:>8.0f}% | {data['played']:>7}")
+
+    return sorted_arch
+
+
+def _print_key_insights_simulation(g: Game, sorted_arch: list, sorted_players: list):
+    """Print key insights for simulation mode."""
+    print(f"\n  3. KEY INSIGHTS")
+
+    if sorted_arch:
+        most_profitable = sorted_arch[0]
+        least_profitable = sorted_arch[-1]
+        print(f"     • Most profitable strategy: {most_profitable[0]} (+{most_profitable[1]['net']/max(1, most_profitable[1]['count']):,.0f} avg net)")
+        print(f"     • Least profitable strategy: {least_profitable[0]} ({least_profitable[1]['net']/max(1, least_profitable[1]['count']):+,} avg net)")
+
+    if sorted_players:
+        best_wr_player = max(
+            [p for p in g.players if g.stats[p.player_id]['hands_played'] > 0],
+            key=lambda p: g.stats[p.player_id]['hands_won'] / max(1, g.stats[p.player_id]['hands_played'])
+        )
+        best_wr = g.stats[best_wr_player.player_id]['hands_won'] / g.stats[best_wr_player.player_id]['hands_played'] * 100
+        print(f"     • Best win rate: {best_wr_player.name} ({best_wr:.1f}%)")
+
+    chip_leader = max(g.players, key=lambda p: p.chips)
+    chip_profit = chip_leader.chips - g.stats[chip_leader.player_id]['starting_chips']
+    print(f"     • Chip leader: {chip_leader.name} ({chip_leader.chips:,} chips, +{chip_profit:,})")
+
+    high_rebuy = [p for p in g.players if g.stats[p.player_id].get('rebuys', 0) > 3]
+    if high_rebuy:
+        print(f"     • High rebuy players (>3): {', '.join(p.name for p in high_rebuy)}")
+
+
+def _print_key_insights_interactive(g: Game):
+    """Print key insights for interactive (non-simulation) mode."""
+    print(f"\n  3. KEY INSIGHTS")
+
+    arch_stats = g.stats_tracker.get_archetype_stats(g.players)
+    sorted_arch = sorted(arch_stats.items(), key=lambda x: x[1]['net']/max(1, x[1]['count']), reverse=True)
+    if sorted_arch:
+        most_profitable = sorted_arch[0]
+        least_profitable = sorted_arch[-1]
+        print(f"     • Most profitable strategy: {most_profitable[0]} (+{most_profitable[1]['net']/max(1, most_profitable[1]['count']):,.0f} avg net)")
+        print(f"     • Least profitable strategy: {least_profitable[0]} ({least_profitable[1]['net']/max(1, least_profitable[1]['count']):+,} avg net)")
+
+    sorted_players = sorted(g.players, key=lambda p: p.chips, reverse=True)
+    if sorted_players:
+        eligible = [p for p in g.players if g.stats[p.player_id]['hands_played'] >= 5]
+        if eligible:
+            best_wr_player = max(eligible, key=lambda p: g.stats[p.player_id]['hands_won'] / max(1, g.stats[p.player_id]['hands_played']))
+            best_wr = g.stats[best_wr_player.player_id]['hands_won'] / g.stats[best_wr_player.player_id]['hands_played'] * 100
+            print(f"     • Best win rate: {best_wr_player.name} ({best_wr:.1f}%)")
+
+        chip_leader = max(g.players, key=lambda p: p.chips)
+        chip_profit = chip_leader.chips - g.stats[chip_leader.player_id]['starting_chips']
+        print(f"     • Chip leader: {chip_leader.name} ({chip_leader.chips:,} chips, +{chip_profit:,})")
+
+        best_hand_player = max(g.players, key=lambda p: g.stats[p.player_id]['best_hand_rank'])
+        best_hand_name = g.stats[best_hand_player.player_id]['best_hand_name']
+        if best_hand_name and best_hand_name != '-':
+            print(f"     • Best hand: {best_hand_player.name} ({best_hand_name})")
+
+        high_rebuy = [p for p in g.players if g.stats[p.player_id].get('rebuys', 0) > 0]
+        if high_rebuy:
+            print(f"     • Players with rebuys: {', '.join(f'{p.name} ({g.stats[p.player_id]["rebuys"]})' for p in high_rebuy)}")
+
+
+def _print_game_theory_analysis(g: Game, is_simulation: bool = False):
+    """Print complete game theory analysis section."""
+    print(f"\n{'GAME THEORY ANALYSIS':^128}")
+    print(f"{'─' * 128}")
+
+    _print_gini_coefficient(g)
+    sorted_arch = _print_archetype_analysis(g)
+
+    # Get sorted players based on mode
+    if is_simulation:
+        sorted_players = sorted(
+            g.players,
+            key=lambda p: g.stats_tracker.get_cumulative_net(p.player_id, p.chips),
+            reverse=True
+        )
+    else:
+        sorted_players = sorted(g.players, key=lambda p: p.chips, reverse=True)
+
+    if is_simulation:
+        _print_key_insights_simulation(g, sorted_arch, sorted_players)
+    else:
+        _print_key_insights_interactive(g)
+
+
 def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
     """Print session stats and game theory analysis for simulation mode."""
     if settings['batch_hands'] > 0:
@@ -214,7 +329,7 @@ def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
         print("\n" + "=" * 128)
         print(f"{'SIMULATION REPORT':^128}")
         print(f"{'─' * 128}")
-        
+
         # Basic metrics
         print(f"\n{'BASIC METRICS'}")
         print(f"{'─' * 60}")
@@ -223,7 +338,7 @@ def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
         avg_rebuys = total_rebuys / len(g.players) if g.players else 0
         biggest_pot = max(s['biggest_pot'] for s in g.stats.values())
         best_hand = max(g.stats.values(), key=lambda x: x['best_hand_rank'])
-        
+
         print(f"  Hands Simulated:      {hands_simulated:>8}")
         print(f"  Players at Table:     {len(g.players):>8}")
         print(f"  Starting Chips:       {settings['starting_chips']:>8,}")
@@ -231,13 +346,13 @@ def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
         print(f"  Total Rebuys:         {total_rebuys:>8,}  (avg: {avg_rebuys:.1f}/player)")
         print(f"  Biggest Single Pot:   {biggest_pot:>8,}")
         print(f"  Best Hand Seen:       {best_hand['best_hand_name']:>15}")
-        
+
         # Player performance table
         print(f"\n{'PLAYER PERFORMANCE'}")
         print(f"{'─' * 128}")
         print(f"  {'Rank':>4} | {'Player':<15} | {'Strategy':<18} | {'Start':>8} | {'Final':>8} | {'Net':>10} | {'Won':>5} | {'Played':>6} | {'Win%':>6} | {'Status':<12}")
         print(f"  {'─' * 4}-+-{'─' * 15}-+-{'─' * 18}-+-{'─' * 8}-+-{'─' * 8}-+-{'─' * 10}-+-{'─' * 5}-+-{'─' * 6}-+-{'─' * 6}-+-{'─' * 12}")
-        
+
         sorted_players = sorted(
             g.players,
             key=lambda p: g.stats_tracker.get_cumulative_net(p.player_id, p.chips),
@@ -254,126 +369,17 @@ def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
 
             net_str = f"+{net:,}" if net > 0 else f"{net:,}"
             print(f"  {rank:>4} | {p.name:<15} | {g.stats_tracker._strategy_label(p):<18} | {s['starting_chips']:>8,} | {p.chips:>8,} | {net_str:>10} | {won:>5} | {played:>6} | {win_pct:>5.1f}% | {status:<12}")
-        
-        # Game Theory Analysis
-        print(f"\n{'GAME THEORY ANALYSIS'}")
-        print(f"{'─' * 128}")
-        
-        # 1. Gini Coefficient
-        gini = g.stats_tracker.calculate_gini(g.players)
-        print(f"\n  1. WEALTH CONCENTRATION (Gini Index): {gini:.3f}")
-        if gini > 0.7:
-            print(f"     → EXTREME inequality — Winner-take-all dynamics")
-        elif gini > 0.4:
-            print(f"     → HIGH inequality — Strategic dominance by few players")
-        elif gini > 0.2:
-            print(f"     → MODERATE inequality — Balanced competition")
-        else:
-            print(f"     → LOW inequality — Healthy strategic diversity")
-        
-        # 2. Strategy Archetype Analysis
-        print(f"\n  2. STRATEGIC ARCHETYPE PERFORMANCE")
-        arch_stats = g.stats_tracker.get_archetype_stats(g.players)
-        print(f"  {'Archetype':<20} | {'Avg Net':>10} | {'Win Rate':>9} | {'Survival':>9} | {'Hands':>7}")
-        print(f"  {'─' * 20}-+-{'─' * 10}-+-{'─' * 9}-+-{'─' * 9}-+-{'─' * 7}")
-        
-        sorted_arch = sorted(arch_stats.items(), key=lambda x: x[1]['net']/max(1, x[1]['count']), reverse=True)
-        for label, data in sorted_arch:
-            avg_net = data['net'] / max(1, data['count'])
-            win_rate = (data['won'] / max(1, data['played'])) * 100
-            print(f"  {label:<20} | {avg_net:>+10,.0f} | {win_rate:>8.1f}% | {data['survival_rate']:>8.0f}% | {data['played']:>7}")
-        
-        # 3. Key Insights
-        print(f"\n  3. KEY INSIGHTS")
-        
-        if sorted_arch:
-            most_profitable = sorted_arch[0]
-            least_profitable = sorted_arch[-1]
-            print(f"     • Most profitable strategy: {most_profitable[0]} (+{most_profitable[1]['net']/max(1, most_profitable[1]['count']):,.0f} avg net)")
-            print(f"     • Least profitable strategy: {least_profitable[0]} ({least_profitable[1]['net']/max(1, least_profitable[1]['count']):+,} avg net)")
-        
-        if sorted_players:
-            best_wr_player = max(
-                [p for p in g.players if g.stats[p.player_id]['hands_played'] > 0],
-                key=lambda p: g.stats[p.player_id]['hands_won'] / max(1, g.stats[p.player_id]['hands_played'])
-            )
-            best_wr = g.stats[best_wr_player.player_id]['hands_won'] / g.stats[best_wr_player.player_id]['hands_played'] * 100
-            print(f"     • Best win rate: {best_wr_player.name} ({best_wr:.1f}%)")
-        
-        chip_leader = max(g.players, key=lambda p: p.chips)
-        chip_profit = chip_leader.chips - g.stats[chip_leader.player_id]['starting_chips']
-        print(f"     • Chip leader: {chip_leader.name} ({chip_leader.chips:,} chips, +{chip_profit:,})")
-        
-        high_rebuy = [p for p in g.players if g.stats[p.player_id].get('rebuys', 0) > 3]
-        if high_rebuy:
-            print(f"     • High rebuy players (>3): {', '.join(p.name for p in high_rebuy)}")
-        
+
+        _print_game_theory_analysis(g, is_simulation=True)
+
         print(f"\n{'=' * 128}")
         print(f"{'End of Simulation Report':^128}")
         print(f"{'=' * 128}\n")
-        
+
     else:
         # Non-simulation mode: show enhanced stats with game theory
         g.print_stats()
-        
-        # Game Theory Analysis
-        print(f"\n{'GAME THEORY ANALYSIS':^128}")
-        print(f"{'─' * 128}")
-        
-        # 1. Gini Coefficient
-        gini = g.stats_tracker.calculate_gini(g.players)
-        print(f"\n  1. WEALTH CONCENTRATION (Gini Index): {gini:.3f}")
-        if gini > 0.7:
-            print(f"     → EXTREME inequality — Winner-take-all dynamics")
-        elif gini > 0.4:
-            print(f"     → HIGH inequality — Strategic dominance by few players")
-        elif gini > 0.2:
-            print(f"     → MODERATE inequality — Balanced competition")
-        else:
-            print(f"     → LOW inequality — Healthy strategic diversity")
-        
-        # 2. Strategy Archetype Analysis
-        print(f"\n  2. STRATEGIC ARCHETYPE PERFORMANCE")
-        arch_stats = g.stats_tracker.get_archetype_stats(g.players)
-        print(f"  {'Archetype':<20} | {'Avg Net':>10} | {'Win Rate':>9} | {'Survival':>9} | {'Hands':>7}")
-        print(f"  {'─' * 20}-+-{'─' * 10}-+-{'─' * 9}-+-{'─' * 9}-+-{'─' * 7}")
-        
-        sorted_arch = sorted(arch_stats.items(), key=lambda x: x[1]['net']/max(1, x[1]['count']), reverse=True)
-        for label, data in sorted_arch:
-            avg_net = data['net'] / max(1, data['count'])
-            win_rate = (data['won'] / max(1, data['played'])) * 100
-            print(f"  {label:<20} | {avg_net:>+10,.0f} | {win_rate:>8.1f}% | {data['survival_rate']:>8.0f}% | {data['played']:>7}")
-        
-        # 3. Key Insights
-        print(f"\n  3. KEY INSIGHTS")
-        
-        if sorted_arch:
-            most_profitable = sorted_arch[0]
-            least_profitable = sorted_arch[-1]
-            print(f"     • Most profitable strategy: {most_profitable[0]} (+{most_profitable[1]['net']/max(1, most_profitable[1]['count']):,.0f} avg net)")
-            print(f"     • Least profitable strategy: {least_profitable[0]} ({least_profitable[1]['net']/max(1, least_profitable[1]['count']):+,} avg net)")
-        
-        sorted_players = sorted(g.players, key=lambda p: p.chips, reverse=True)
-        if sorted_players:
-            eligible = [p for p in g.players if g.stats[p.player_id]['hands_played'] >= 5]
-            if eligible:
-                best_wr_player = max(eligible, key=lambda p: g.stats[p.player_id]['hands_won'] / max(1, g.stats[p.player_id]['hands_played']))
-                best_wr = g.stats[best_wr_player.player_id]['hands_won'] / g.stats[best_wr_player.player_id]['hands_played'] * 100
-                print(f"     • Best win rate: {best_wr_player.name} ({best_wr:.1f}%)")
-            
-            chip_leader = max(g.players, key=lambda p: p.chips)
-            chip_profit = chip_leader.chips - g.stats[chip_leader.player_id]['starting_chips']
-            print(f"     • Chip leader: {chip_leader.name} ({chip_leader.chips:,} chips, +{chip_profit:,})")
-            
-            best_hand_player = max(g.players, key=lambda p: g.stats[p.player_id]['best_hand_rank'])
-            best_hand_name = g.stats[best_hand_player.player_id]['best_hand_name']
-            if best_hand_name and best_hand_name != '-':
-                print(f"     • Best hand: {best_hand_player.name} ({best_hand_name})")
-            
-            high_rebuy = [p for p in g.players if g.stats[p.player_id].get('rebuys', 0) > 0]
-            if high_rebuy:
-                print(f"     • Players with rebuys: {', '.join(f'{p.name} ({g.stats[p.player_id]["rebuys"]})' for p in high_rebuy)}")
-        
+        _print_game_theory_analysis(g, is_simulation=False)
         print()
 
 
