@@ -6,9 +6,70 @@ from players.roster import create_bots, MAX_BOTS
 from strategies.difficulty import EASY, NORMAL, HARD
 
 
-def _prompt_int(prompt: str, default: int, min_val: int = 1) -> int:
-    raw = input(prompt).strip()
-    return max(min_val, int(raw)) if raw.isdigit() else default
+def _prompt_int(prompt: str, default: int, min_val: int = 1, max_val: int = None) -> int:
+    """Prompt user for an integer value with validation and retry loop.
+    
+    Args:
+        prompt: The prompt message to display
+        default: Default value if user presses Enter
+        min_val: Minimum allowed value (inclusive)
+        max_val: Maximum allowed value (inclusive), or None for no limit
+    
+    Returns:
+        Validated integer within [min_val, max_val] range
+    """
+    while True:
+        raw = input(prompt).strip()
+        
+        # Empty input uses default
+        if not raw:
+            return default
+        
+        # Validate numeric
+        try:
+            value = int(raw)
+        except ValueError:
+            print(f"  Invalid input: '{raw}'. Please enter a number.")
+            continue
+        
+        # Validate range
+        if value < min_val:
+            print(f"  Value too low. Minimum: {min_val}")
+            continue
+        
+        if max_val is not None and value > max_val:
+            print(f"  Value too high. Maximum: {max_val}")
+            continue
+        
+        return value
+
+
+def _prompt_player_name(default: str = "Player 1", max_length: int = 15) -> str:
+    """Prompt user for their player name with validation.
+    
+    Args:
+        default: Default name if user presses Enter
+        max_length: Maximum allowed name length
+    
+    Returns:
+        Validated player name
+    """
+    while True:
+        raw = input(f"Enter your name (default {default}): ").strip()
+        name = raw if raw else default
+        
+        # Validate length
+        if len(name) > max_length:
+            print(f"  Name too long ({len(name)} chars). Maximum: {max_length} chars.")
+            continue
+        
+        # Validate characters (alphanumeric, spaces, underscores, hyphens only)
+        import re
+        if not re.match(r'^[\w\s\-]+$', name):
+            print(f"  Invalid characters. Use only letters, numbers, spaces, underscores, or hyphens.")
+            continue
+        
+        return name
 
 
 def _prompt_yn(prompt: str, default: bool = False) -> bool:
@@ -55,10 +116,9 @@ def _collect_settings():
 
     player_name = "Player 1"
     if not spectator:
-        player_name = input("Enter your name (default Player 1): ").strip() or "Player 1"
+        player_name = _prompt_player_name()
 
-    num_bots = _prompt_int(f"How many bots? (default 3, max {MAX_BOTS}): ", 3)
-    num_bots = min(num_bots, MAX_BOTS)
+    num_bots = _prompt_int(f"How many bots? (default 3, max {MAX_BOTS}): ", 3, min_val=1, max_val=MAX_BOTS)
 
     print("\nTable difficulty:")
     print("  1. Easy    (bots make more mistakes)")

@@ -18,6 +18,28 @@ def _fmt_cards(cards) -> str:
 
 
 class TerminalPlayer(Player):
+    def __init__(self, player_id: str, name: str, starting_chips: int):
+        super().__init__(player_id, name, starting_chips)
+        self._last_log_count = 0  # Track how many log entries we've seen
+
+    def _show_recent_actions(self, hand_log: list):
+        """Show opponent actions since last prompt."""
+        new_entries = hand_log[self._last_log_count:]
+        if new_entries:
+            print(f"\n{'─' * 50}")
+            for entry in new_entries:
+                # Skip dealing messages and focus on actions
+                entry_stripped = entry.strip()
+                if any(keyword in entry_stripped.lower() for keyword in [
+                    'fold', 'call', 'raise', 'check', 'all-in', 'bets',
+                    'posts sb', 'posts bb', 'ante', 'wins',
+                    '--- flop ---', '--- turn ---', '--- river ---',
+                    '--- showdown ---', '--- new hand ---'
+                ]):
+                    print(f"  {entry_stripped}")
+            print(f"{'─' * 50}")
+            self._last_log_count = len(hand_log)
+
     def get_action(self, game_state: dict) -> Tuple[str, int]:
         min_call        = game_state.get('min_call', 0)
         min_raise       = game_state.get('min_raise', 0)
@@ -25,6 +47,14 @@ class TerminalPlayer(Player):
         community_cards = game_state.get('community_cards', [])
         hand_log        = game_state.get('hand_log', [])
         player_role     = game_state.get('player_role', '')
+
+        # Show opponent actions since last turn
+        self._show_recent_actions(hand_log)
+
+        # Reset counter at start of new hand
+        if any('--- NEW HAND ---' in entry for entry in hand_log[-5:]):
+            self._last_log_count = 0
+            self._show_recent_actions(hand_log)
 
         # ── Info header ──────────────────────────────────────────────────────
         print("\n" + "=" * 50)
@@ -100,14 +130,21 @@ class TerminalPlayer(Player):
 
             elif choice in ['b', 'r', 'bet', 'raise']:
                 print(f"  Shortcuts: min={shortcuts['min']}, half={shortcuts['half']}, pot={shortcuts['pot']}")
+                print(f"  (Type 'cancel' to go back)")
                 while True:
-                    raw = input(f"  Amount (min {min_raise_total}, or min/half/pot): ").strip().lower()
+                    raw = input(f"  Amount (min {min_raise_total}, or min/half/pot, cancel): ").strip().lower()
+                    
+                    # Allow cancel to return to main menu
+                    if raw in ['cancel', 'esc', 'x']:
+                        print("  Raise cancelled.")
+                        break
+                    
                     if raw in shortcuts:
                         amt = shortcuts[raw]
                     elif raw.isdigit():
                         amt = int(raw)
                     else:
-                        print("  Enter a number or min/half/pot.")
+                        print("  Enter a number, min/half/pot, or 'cancel' to go back.")
                         continue
                     if amt >= min_raise_total and amt <= self.chips:
                         if amt == self.chips:
