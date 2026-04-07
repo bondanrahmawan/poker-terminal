@@ -316,8 +316,9 @@ def _print_key_insights_simulation(g: Game, sorted_arch: list, sorted_players: l
         print(f"     • Best win rate: {best_wr_player.name} ({best_wr:.1f}%)")
 
     chip_leader = max(g.players, key=lambda p: p.chips)
-    chip_profit = chip_leader.chips - g.stats[chip_leader.player_id]['starting_chips']
-    print(f"     • Chip leader: {chip_leader.name} ({chip_leader.chips:,} chips, +{chip_profit:,})")
+    chip_profit = g.stats_tracker.get_cumulative_net(chip_leader.player_id, chip_leader.chips)
+    profit_str = f"+{chip_profit:,}" if chip_profit > 0 else f"{chip_profit:,}"
+    print(f"     • Chip leader: {chip_leader.name} ({chip_leader.chips:,} chips, {profit_str})")
 
     high_rebuy = [p for p in g.players if g.stats[p.player_id].get('rebuys', 0) > 3]
     if high_rebuy:
@@ -345,8 +346,9 @@ def _print_key_insights_interactive(g: Game):
             print(f"     • Best win rate: {best_wr_player.name} ({best_wr:.1f}%)")
 
         chip_leader = max(g.players, key=lambda p: p.chips)
-        chip_profit = chip_leader.chips - g.stats[chip_leader.player_id]['starting_chips']
-        print(f"     • Chip leader: {chip_leader.name} ({chip_leader.chips:,} chips, +{chip_profit:,})")
+        chip_profit = g.stats_tracker.get_cumulative_net(chip_leader.player_id, chip_leader.chips)
+        profit_str = f"+{chip_profit:,}" if chip_profit > 0 else f"{chip_profit:,}"
+        print(f"     • Chip leader: {chip_leader.name} ({chip_leader.chips:,} chips, {profit_str})")
 
         best_hand_player = max(g.players, key=lambda p: g.stats[p.player_id]['best_hand_rank'])
         best_hand_name = g.stats[best_hand_player.player_id]['best_hand_name']
@@ -402,6 +404,12 @@ def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
         print(f"  Hands Simulated:      {hands_simulated:>8}")
         print(f"  Players at Table:     {len(g.players):>8}")
         print(f"  Starting Chips:       {settings['starting_chips']:>8,}")
+        
+        # Show total invested if different from starting (due to rebuys)
+        total_invested_all = sum(s.get('total_invested', settings['starting_chips']) for s in g.stats.values())
+        if total_invested_all > settings['starting_chips'] * len(g.players):
+            print(f"  Total Invested:         {total_invested_all:>8,}")
+        
         print(f"  Big Blind:            {settings['big_blind']:>8}")
         print(f"  Total Rebuys:         {total_rebuys:>8,}  (avg: {avg_rebuys:.1f}/player)")
         print(f"  Biggest Single Pot:   {biggest_pot:>8,}")
@@ -410,8 +418,8 @@ def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
         # Player performance table
         print(f"\n{'PLAYER PERFORMANCE'}")
         print(f"{'─' * 128}")
-        print(f"  {'Rank':>4} | {'Player':<15} | {'Strategy':<18} | {'Start':>8} | {'Final':>8} | {'Net':>10} | {'Won':>5} | {'Played':>6} | {'Win%':>6} | {'Status':<12}")
-        print(f"  {'─' * 4}-+-{'─' * 15}-+-{'─' * 18}-+-{'─' * 8}-+-{'─' * 8}-+-{'─' * 10}-+-{'─' * 5}-+-{'─' * 6}-+-{'─' * 6}-+-{'─' * 12}")
+        print(f"  {'Rank':>4} | {'Player':<15} | {'Strategy':<18} | {'Invested':>9} | {'Final':>8} | {'Net':>10} | {'Won':>5} | {'Played':>6} | {'Win%':>6} | {'Status':<12}")
+        print(f"  {'─' * 4}-+-{'─' * 15}-+-{'─' * 18}-+-{'─' * 9}-+-{'─' * 8}-+-{'─' * 10}-+-{'─' * 5}-+-{'─' * 6}-+-{'─' * 6}-+-{'─' * 12}")
 
         sorted_players = sorted(
             g.players,
@@ -422,13 +430,14 @@ def _print_stats_and_summary(g: Game, settings: dict, hands_simulated: int):
         for rank, p in enumerate(sorted_players, 1):
             s = g.stats[p.player_id]
             net = g.stats_tracker.get_cumulative_net(p.player_id, p.chips)
+            total_invested = s.get('total_invested', s['starting_chips'])
             played = s['hands_played']
             won = s['hands_won']
             win_pct = (won / played * 100) if played > 0 else 0
             status = "Active" if p.chips > 0 else f"Bust #{s['bust_hand']}"
 
             net_str = f"+{net:,}" if net > 0 else f"{net:,}"
-            print(f"  {rank:>4} | {p.name:<15} | {g.stats_tracker._strategy_label(p):<18} | {s['starting_chips']:>8,} | {p.chips:>8,} | {net_str:>10} | {won:>5} | {played:>6} | {win_pct:>5.1f}% | {status:<12}")
+            print(f"  {rank:>4} | {p.name:<15} | {g.stats_tracker._strategy_label(p):<18} | {total_invested:>9,} | {p.chips:>8,} | {net_str:>10} | {won:>5} | {played:>6} | {win_pct:>5.1f}% | {status:<12}")
 
         _print_game_theory_analysis(g, is_simulation=True)
 

@@ -121,28 +121,35 @@ class StatsTracker:
         This resets:
         - Player chips to starting_chips
         - Bust hand tracking (everyone is active again)
-        - Records cumulative_net before reset
+        - Records cumulative_net before reset (accounting for total_invested)
 
         Does NOT reset: hands_won, hands_played, chips_won, biggest_pot, best_hand
         """
         for p in players:
             if p.player_id in self.stats:
                 # Record session profit/loss before reset
-                session_net = p.chips - self.stats[p.player_id]['starting_chips']
+                # Net = current_chips - total_invested (which includes all rebuys)
+                total_invested = self.stats[p.player_id]['total_invested']
+                session_net = p.chips - total_invested
                 self.stats[p.player_id]['cumulative_net'] += session_net
 
                 # Reset chips to starting amount for new session
                 p.chips = self.stats[p.player_id]['starting_chips']
+                # Reset total_invested to starting_chips for new session
+                self.stats[p.player_id]['total_invested'] = self.stats[p.player_id]['starting_chips']
                 # Clear bust state for new session
                 self.stats[p.player_id]['bust_hand'] = None
 
     def get_cumulative_net(self, player_id: str, current_chips: int) -> int:
         """
         Get total net profit/loss for a player across all sessions.
-        cumulative_net (from completed sessions) + current session net.
+        Net = current_chips - total_invested (starting + rebuys) + cumulative from past sessions.
+        
+        This properly accounts for all money put into the pot including rebuys.
         """
         if player_id in self.stats:
-            session_net = current_chips - self.stats[player_id]['starting_chips']
+            total_invested = self.stats[player_id]['total_invested']
+            session_net = current_chips - total_invested
             return self.stats[player_id]['cumulative_net'] + session_net
         return 0
 
@@ -225,13 +232,13 @@ class StatsTracker:
         # Player rows - sorted by net profit
         sorted_players = sorted(
             players_with_stats,
-            key=lambda p: p.chips - self.stats[p.player_id]['starting_chips'],
+            key=lambda p: self.get_cumulative_net(p.player_id, p.chips),
             reverse=True,
         )
 
         for rank, p in enumerate(sorted_players, 1):
             s = self.stats[p.player_id]
-            net = p.chips - s['starting_chips']
+            net = self.get_cumulative_net(p.player_id, p.chips)
 
             # Color coding for net
             if net > 0:
