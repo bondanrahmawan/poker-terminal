@@ -20,7 +20,7 @@ from core.card import Card
 from strategies import BotStrategy, PlayerView, register
 from strategies import (
     OpponentTracker, TableImage, TiltState,
-    detect_draws, advanced_equity, DrawInfo,
+    detect_draws, advanced_equity, monte_carlo_equity, DrawInfo,
     BetSize, choose_bet_size, choose_raise_size, stack_depth_label,
     should_slow_play, should_semi_bluff,
     desperation_factor, adjust_for_desperation,
@@ -270,9 +270,14 @@ class DesignedBotStrategy(BotStrategy):
 
         # Advanced equity with draw detection
         draw = detect_draws(player.hole_cards, community)
-        equity = self._noisy_equity(
-            advanced_equity(player.hole_cards, community, num_active - 1)
-        )
+        if self.difficulty >= 0.75 and len(community) >= 4:
+            mc_trials = int(50 * self.difficulty)
+            raw_equity = monte_carlo_equity(
+                player.hole_cards, community, num_active - 1, mc_trials
+            )
+        else:
+            raw_equity = advanced_equity(player.hole_cards, community, num_active - 1)
+        equity = self._noisy_equity(raw_equity)
         # Add fold equity
         equity += fold_equity
         equity += exploit['equity_boost']

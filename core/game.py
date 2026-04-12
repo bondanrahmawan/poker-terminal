@@ -73,6 +73,7 @@ class Game:
         self.player_roles: Dict[str, str] = {}
         self.fold_streets: Dict[str, str] = {}
         self.current_street: str = 'preflop'
+        self.street_investments: Dict[str, dict] = {}
         
         # Last hand results (for bot notifications)
         self._last_hand_result: Optional[ShowdownResult] = None
@@ -161,6 +162,7 @@ class Game:
         self.hand_count += 1
         self.fold_streets = {}
         self.current_street = 'preflop'
+        self.street_investments = {}
 
         if self.pending_msg:
             self.log(self.pending_msg)
@@ -221,6 +223,11 @@ class Game:
         for p in active_players:
             self.stats_tracker.increment_hands_played(p.player_id)
 
+        self.street_investments = {
+            p.player_id: {'preflop': 0, 'flop': 0, 'turn': 0, 'river': 0}
+            for p in active_players
+        }
+
         self.log("Turn order:")
         for p in seat_order:
             role = self.player_roles.get(p.player_id, '')
@@ -264,6 +271,8 @@ class Game:
                 for p in [x for x in self.players if x.is_active]:
                     ante_amt = p.lose_chips(self.blind_scheduler.ante)
                     self.pot_manager.add_contribution(p.player_id, ante_amt)
+                    if p.player_id in self.street_investments:
+                        self.street_investments[p.player_id]['preflop'] += ante_amt
                     self._log_action(p.name, "ante", ante_amt)
 
             if heads_up:
@@ -279,11 +288,15 @@ class Game:
 
             sb_amt = sb_player.lose_chips(self.big_blind // 2)
             self.pot_manager.add_contribution(sb_player.player_id, sb_amt)
+            if sb_player.player_id in self.street_investments:
+                self.street_investments[sb_player.player_id]['preflop'] += sb_amt
             self.bet_manager.process_bet(sb_player.player_id, sb_amt)
             self._log_action(sb_player.name, "posts SB", sb_amt)
 
             bb_amt = bb_player.lose_chips(self.big_blind)
             self.pot_manager.add_contribution(bb_player.player_id, bb_amt)
+            if bb_player.player_id in self.street_investments:
+                self.street_investments[bb_player.player_id]['preflop'] += bb_amt
             self.bet_manager.process_bet(bb_player.player_id, bb_amt)
             self._log_action(bb_player.name, "posts BB", bb_amt)
         else:
@@ -335,6 +348,8 @@ class Game:
                 self.fold_streets[p.player_id] = self.current_street
             else:
                 actual_deducted = p.lose_chips(amt)
+                if p.player_id in self.street_investments:
+                    self.street_investments[p.player_id][self.current_street] += actual_deducted
                 self.pot_manager.add_contribution(p.player_id, actual_deducted)
 
                 if action in (PlayerAction.RAISE, PlayerAction.ALL_IN) and \

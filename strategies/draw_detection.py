@@ -285,3 +285,47 @@ def equity_vs_range(hole_cards: List[Card], community: List[Card],
     adjustment = -0.10 * range_strength * num_opponents
 
     return max(0.0, min(1.0, base + adjustment))
+
+
+def monte_carlo_equity(hole_cards: List[Card], community: List[Card],
+                       num_opponents: int = 1, trials: int = 100,
+                       short_deck: bool = False) -> float:
+    """Estimate equity via Monte Carlo simulation — deal random runouts and opponent hands."""
+    import random as _rng
+    from core.card import Suit, Rank
+
+    known = set((c.rank, c.suit) for c in hole_cards + community)
+    min_rank = 6 if short_deck else 2
+    remaining = [Card(r, s) for s in Suit.get_all() for r in Rank.get_all()
+                 if r >= min_rank and (r, s) not in known]
+
+    cards_needed = 5 - len(community)
+    total_opp_cards = 2 * num_opponents
+    if len(remaining) < cards_needed + total_opp_cards:
+        return advanced_equity(hole_cards, community, num_opponents, short_deck)
+
+    wins = 0
+    ties = 0
+    for _ in range(trials):
+        _rng.shuffle(remaining)
+        idx = 0
+
+        sim_community = community + remaining[idx:idx + cards_needed]
+        idx += cards_needed
+
+        my_score, _ = HandEvaluator.evaluate(hole_cards, sim_community, short_deck=short_deck)
+
+        best_opp = None
+        for _ in range(num_opponents):
+            opp_cards = remaining[idx:idx + 2]
+            idx += 2
+            opp_score, _ = HandEvaluator.evaluate(opp_cards, sim_community, short_deck=short_deck)
+            if best_opp is None or opp_score > best_opp:
+                best_opp = opp_score
+
+        if my_score > best_opp:
+            wins += 1
+        elif my_score == best_opp:
+            ties += 1
+
+    return (wins + ties * 0.5) / trials
