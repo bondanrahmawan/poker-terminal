@@ -320,7 +320,7 @@ def _print_benchmark_results(ranked: list, num_tables: int, hands_per_table: int
         for tables_done, top3 in convergence_snapshots:
             match = sum(1 for s in top3 if s in final_top3)
             pct = tables_done / num_tables * 100
-            indicator = _GREEN + '●' + _RESET if match == 3 else (_YELLOW + '◐' + _RESET if match >= 2 else _RED + '○' + _RESET)
+            indicator = _GREEN + '[=]' + _RESET if match == 3 else (_YELLOW + '[~]' + _RESET if match >= 2 else _RED + '[x]' + _RESET)
             print(f"  {indicator} At {pct:>3.0f}% ({tables_done:>4} tables): "
                   f"top 3 = {', '.join(top3)}  ({match}/3 match)")
         last_snap = convergence_snapshots[-1][1] if convergence_snapshots else []
@@ -404,11 +404,10 @@ def _run_strategy_benchmark() -> None:
     total_hands = num_tables * hands_per_table
     strat_names = [s[0] for s in _BENCHMARK_STRATEGIES]
     diff_label = {0.4: 'Easy', 0.6: 'Normal', 0.75: 'Hard', 0.9: 'Expert'}.get(difficulty, f'{difficulty}')
-    print(f"\n  Strategies : {', '.join(strat_names)}")
-    print(f"  Total hands: {total_hands:,}  ({num_tables} tables × {hands_per_table} hands)")
+    print(f"\n  {len(strat_names)} strategies: {', '.join(strat_names)}")
+    print(f"  Total hands: {total_hands:,}  ({num_tables} tables x {hands_per_table} hands)")
     print(f"  Difficulty : {diff_label}  |  Ante: {'Yes' if enable_ante else 'No'}"
           f"  |  Short deck: {'Yes' if short_deck else 'No'}")
-    print(f"\n  Simulating ", end='', flush=True)
 
     agg = {name: {'total_net': 0, 'hands_won': 0, 'hands_played': 0,
                   'total_rebuys': 0, 'tables_won': 0}
@@ -423,9 +422,12 @@ def _run_strategy_benchmark() -> None:
         check_at = {num_tables // 4, num_tables // 2, 3 * num_tables // 4}
 
     t_start    = time.time()
-    dot_every  = max(1, num_tables // 20)
+    report_every = max(1, num_tables // 10)
 
     for table_num in range(num_tables):
+        if (table_num + 1) % report_every == 0 or table_num == 0:
+            pct = (table_num + 1) / num_tables * 100
+            print(f"\r  Simulating... {table_num + 1}/{num_tables} tables ({pct:.0f}%)", end='', flush=True)
         g = Game(
             big_blind=big_blind,
             hands_per_level=9999,
@@ -474,11 +476,8 @@ def _run_strategy_benchmark() -> None:
             snapshot = sorted(strat_names, key=lambda n: sum(per_table_nets[n]), reverse=True)
             convergence_snapshots.append((table_num + 1, snapshot[:3]))
 
-        if (table_num + 1) % dot_every == 0:
-            print('.', end='', flush=True)
-
     elapsed = time.time() - t_start
-    print(f"  done ({elapsed:.1f}s)")
+    print(f"\r  Simulating... {num_tables}/{num_tables} tables (100%) -- done ({elapsed:.1f}s)")
 
     ranked = sorted(agg.items(), key=lambda x: x[1]['total_net'], reverse=True)
     _print_benchmark_results(ranked, num_tables, hands_per_table, starting_chips, big_blind,
@@ -506,15 +505,13 @@ def _run_h2h_benchmark() -> None:
     n_matchups = n_strats * (n_strats - 1) // 2
     total_tables = n_matchups * num_tables
 
-    print(f"\n  {n_matchups} matchups × {num_tables} tables = {total_tables:,} total tables")
-    print(f"  Simulating ", end='', flush=True)
+    print(f"\n  {n_matchups} matchups x {num_tables} tables = {total_tables:,} total tables")
 
     wins = [[0] * n_strats for _ in range(n_strats)]
     net_matrix = [[0.0] * n_strats for _ in range(n_strats)]
 
     t_start = time.time()
     matchup_count = 0
-    dot_every = max(1, n_matchups // 20)
 
     for i in range(n_strats):
         for j in range(i + 1, n_strats):
@@ -557,11 +554,11 @@ def _run_h2h_benchmark() -> None:
             net_matrix[j][i] = -a_total_net / num_tables
 
             matchup_count += 1
-            if matchup_count % dot_every == 0:
-                print('.', end='', flush=True)
+            pct = matchup_count / n_matchups * 100
+            print(f"\r  Simulating... {matchup_count}/{n_matchups} matchups ({pct:.0f}%)", end='', flush=True)
 
     elapsed = time.time() - t_start
-    print(f"  done ({elapsed:.1f}s)")
+    print(f"\r  Simulating... {n_matchups}/{n_matchups} matchups (100%) -- done ({elapsed:.1f}s)")
 
     _print_h2h_matrix(strat_names, wins, net_matrix, num_tables)
 
@@ -570,41 +567,53 @@ def _print_h2h_matrix(strat_names: list, wins: list, net_matrix: list,
                        num_tables: int) -> None:
     """Print head-to-head win rate matrix with dominance analysis."""
     n = len(strat_names)
-    abbrevs = [s[:7] for s in strat_names]
+    # Short names: max 8 chars for columns, max 16 for rows
+    _SHORT = {
+        'TightAggressive': 'TightAgg', 'TightPassive': 'TightPas',
+        'LooseAggressive': 'LooseAgg', 'LoosePassive': 'LoosePas',
+        'Balanced': 'Balanced', 'Nit': 'Nit', 'Maniac': 'Maniac', 'Trapper': 'Trapper',
+    }
+    abbrevs = [_SHORT.get(s, s[:8]) for s in strat_names]
+    ROW_W = 16  # accommodates "TightAggressive" (15) + 1
 
     W = 84
     print(f"\n{'=' * W}")
-    print(f"  {_BOLD}HEAD-TO-HEAD WIN RATES{_RESET}  (row vs column, {num_tables} tables each)")
+    print(f"  {_BOLD}HEAD-TO-HEAD WIN RATES{_RESET}  (row beat column, {num_tables} tables each)")
     print(f"{'=' * W}")
 
-    # Header row
-    print(f"\n  {'':>14}", end='')
+    # Header row — consistent 9-char cells (space + 7 chars + %)
+    print(f"\n  {'':>{ROW_W}}", end='')
     for a in abbrevs:
         print(f" {a:>8}", end='')
     print(f" {'Overall':>8}")
-    print(f"  {'':>14}" + " --------" * n + " --------")
+    print(f"  {'':>{ROW_W}}" + " --------" * n + " --------")
 
     for i in range(n):
         total_wins = sum(wins[i][j] for j in range(n) if j != i)
         total_possible = (n - 1) * num_tables
         total_pct = total_wins / total_possible * 100 if total_possible else 0
 
-        print(f"  {strat_names[i]:>14}", end='')
+        print(f"  {strat_names[i]:>{ROW_W}}", end='')
         for j in range(n):
             if i == j:
-                print(f" {'—':>8}", end='')
+                print(f" {'---':>8}", end='')
             else:
                 pct = wins[i][j] / num_tables * 100
+                cell = f"{pct:>6.0f}%"
                 if pct >= 60:
-                    print(f" {_GREEN}{pct:>6.0f}%{_RESET} ", end='')
+                    print(f" {_GREEN}{cell}{_RESET} ", end='')
                 elif pct <= 40:
-                    print(f" {_RED}{pct:>6.0f}%{_RESET} ", end='')
+                    print(f" {_RED}{cell}{_RESET} ", end='')
                 else:
-                    print(f" {pct:>7.0f}%", end='')
+                    print(f" {cell} ", end='')
 
-        color = _GREEN if total_pct >= 55 else (_RED if total_pct < 45 else '')
-        reset = _RESET if color else ''
-        print(f" {color}{total_pct:>6.1f}%{reset} ")
+        cell = f"{total_pct:>6.1f}%"
+        if total_pct >= 55:
+            print(f" {_GREEN}{cell}{_RESET} ")
+        elif total_pct < 45:
+            print(f" {_RED}{cell}{_RESET} ")
+        else:
+            print(f" {cell} ")
 
     # Dominance ranking
     print(f"\n  {_BOLD}DOMINANCE RANKING{_RESET}")
@@ -702,15 +711,14 @@ def _run_parameter_sweep() -> None:
     big_blind       = _prompt_int("Big Blind?            (default 20):  ", 20,  min_val=2)
     difficulty      = _prompt_difficulty()
 
-    print(f"\n  Sweeping {param_name}: {steps[0]} -> {steps[-1]} ({len(steps)} points)")
-    print(f"  {len(steps)} × {num_tables} tables × {hands_per_table} hands = {len(steps) * num_tables * hands_per_table:,} total hands")
-    print(f"\n  Simulating ", end='', flush=True)
+    print(f"\n  Sweeping {param_name}: {steps[0]} to {steps[-1]} ({len(steps)} points)")
+    print(f"  {len(steps)} x {num_tables} tables x {hands_per_table} hands = {len(steps) * num_tables * hands_per_table:,} total hands")
 
     results = []  # list of (param_value, avg_net, std_dev)
     t_start = time.time()
-    dot_every = max(1, len(steps) // 10)
 
     for step_idx, value in enumerate(steps):
+        print(f"\r  Simulating... {param_name}={value:.1f} [{step_idx + 1}/{len(steps)}]", end='', flush=True)
         profile_args = dict(base_profile)
         profile_args[param_name] = value
         sweep_profile = StyleProfile(name=f'sweep_{value}', **profile_args)
@@ -754,11 +762,8 @@ def _run_parameter_sweep() -> None:
         sd = (sum((x - avg_net)**2 for x in nets) / (len(nets) - 1)) ** 0.5 if len(nets) > 1 else 0
         results.append((value, avg_net, sd))
 
-        if (step_idx + 1) % dot_every == 0:
-            print('.', end='', flush=True)
-
     elapsed = time.time() - t_start
-    print(f"  done ({elapsed:.1f}s)")
+    print(f"\r  Simulating... done ({len(steps)} points, {elapsed:.1f}s)          ")
 
     _print_parameter_sweep(param_name, results, num_tables, hands_per_table, starting_chips, big_blind)
 
@@ -794,40 +799,46 @@ def _print_parameter_sweep(param_name: str, results: list, num_tables: int,
     chart_width = 30
     center = chart_width // 2
 
-    print(f"\n  {param_name.upper()} vs NET PROFIT")
+    print(f"\n  {_BOLD}{param_name.upper()} vs NET PROFIT (chips/table){_RESET}")
+    print(f"         {_DIM}<-- loss{_RESET}{'':>{center - 6}}0{'':>{center - 8}}{_DIM}profit -->{_RESET}")
     print(f"  {'':>5}  {'':>{center}}|")
 
     for value, avg_net, _ in results:
         bar_len = round(abs(avg_net) / max_abs * center)
         bar_len = max(bar_len, 1) if avg_net != 0 else 0
+        marker = ' *' if value == best_val else ''
 
         if avg_net >= 0:
             left_pad = ' ' * center
-            bar = _GREEN + '█' * bar_len + _RESET
-            line = f"  {value:>4.1f}  {left_pad}|{bar}"
-        else:
+            bar = _GREEN + '#' * bar_len + _RESET
+            line = f"  {value:>4.1f}  {left_pad}|{bar}{marker}"
+        elif avg_net < 0:
             padding = ' ' * (center - bar_len)
-            bar = _RED + '▒' * bar_len + _RESET
-            line = f"  {value:>4.1f}  {padding}{bar}|"
+            bar = _RED + '#' * bar_len + _RESET
+            line = f"  {value:>4.1f}  {padding}{bar}|{marker}"
+        else:
+            left_pad = ' ' * center
+            line = f"  {value:>4.1f}  {left_pad}|"
 
         print(line)
 
     print(f"  {'':>5}  {'':>{center}}|")
-    print(f"  {'':>5}  {'-loss':>{center}}   +profit")
+    print(f"  {_DIM}{'':>5}  * = optimal value{_RESET}")
 
     # Optimal point
+    best_sign = '+' if best_net >= 0 else ''
     print(f"\n  {_BOLD}OPTIMAL{_RESET}: {param_name} = {_GREEN}{best_val}{_RESET}"
-          f" (avg net: {_GREEN}+{best_net:,.0f}{_RESET} chips/table)")
+          f" (avg net: {_GREEN}{best_sign}{best_net:,.0f}{_RESET} chips/table)")
 
     # Insight
     nets = [r[1] for r in results]
     spread = max(nets) - min(nets)
     if spread > starting_chips * 2:
-        print(f"  Sensitivity: {_RED}HIGH{_RESET} — {param_name} strongly impacts results")
+        print(f"  Sensitivity: {_RED}HIGH{_RESET} -- {param_name} strongly impacts results")
     elif spread > starting_chips:
-        print(f"  Sensitivity: {_YELLOW}MODERATE{_RESET} — {param_name} matters")
+        print(f"  Sensitivity: {_YELLOW}MODERATE{_RESET} -- {param_name} matters")
     else:
-        print(f"  Sensitivity: {_DIM}LOW{_RESET} — other factors dominate")
+        print(f"  Sensitivity: {_DIM}LOW{_RESET} -- other factors dominate")
 
     print(f"\n{'=' * W}\n")
 
