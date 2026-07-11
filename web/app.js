@@ -10,7 +10,10 @@ const S = {
   animating: false,
   pendingView: null,  // snapshot held back until the queue drains
   skip: false,        // fast-forward flag
+  closing: false,     // deliberate WS close (newGame) — suppresses reconnect
 };
+
+let wsRetryDelay = 1000; // reconnect backoff: 1s, 2s, 4s … cap 10s
 
 const el = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -57,11 +60,16 @@ function openWs() {
 
   ws.onopen = async () => {
     setStatus("");
-    // Start the first hand once the socket is up so its broadcast reaches us.
-    const res = await postJSON(`/games/${S.gameId}/hands`, {});
-    if (!res.ok) {
-      const info = await res.json().catch(() => ({}));
-      setStatus(`Could not start hand: ${info.reason || res.status}`);
+    wsRetryDelay = 1000; // successful connect resets the backoff
+    if (S.view && S.view.hand_number === 0) {
+      // Brand-new game: start the first hand once the socket is up so its
+      // broadcast reaches us. On reconnect this must NOT run (a mid-hand
+      // reconnect would 409; a between-hands one would silently deal).
+      await nextHand();
+    } else {
+      // Reconnect: events pushed while we were down are never re-sent on the
+      // WS (shared broadcast cursor) — backfill via REST.
+      await resyncEvents();
     }
   };
 
@@ -87,8 +95,80 @@ function openWs() {
     }
   };
 
-  ws.onclose = () => setStatus("Disconnected.");
+  ws.onclose = () => {
+    if (S.ws !== ws) return; // stale socket (replaced by a newer connect)
+    if (S.closing || S.phase !== "table") return;
+    setStatus("Reconnecting…");
+    disableActionBar();
+    scheduleReconnect();
+  };
   ws.onerror = () => setStatus("Connection error.");
+}
+
+function scheduleReconnect() {
+  const delay = wsRetryDelay;
+  wsRetryDelay = Math.min(wsRetryDelay * 2, 10000);
+  setTimeout(attemptReconnect, delay);
+}
+
+async function attemptReconnect() {
+  if (S.closing || S.phase !== "table") return;
+  try {
+    const res = await fetch(`/games/${S.gameId}/state`);
+    if (res.status === 404) {
+      // Session expired or server restarted with fresh state: fall back cleanly.
+      newGame();
+      setStatus("Previous game expired.");
+      return;
+    }
+    if (!res.ok) throw new Error(`state ${res.status}`);
+    openWs(); // onopen resyncs events + resets backoff
+  } catch (e) {
+    scheduleReconnect(); // network still down — keep backing off
+  }
+}
+
+// REST catch-up after a (re)connect: replay missed events through the normal
+// queue (dedupe makes overlap harmless), then apply a fresh snapshot.
+async function resyncEvents() {
+  try {
+    const res = await fetch(`/games/${S.gameId}/events?since=${S.lastSeq}`);
+    if (res.ok) {
+      const data = await res.json().catch(() => ({ events: [] }));
+      const evs = (data.events || []).filter((ev) => ev.seq > S.lastSeq);
+      if (evs.length) {
+        S.queue.push(...evs);
+        if (!S.animating) pump();
+      }
+    }
+    const vres = await fetch(`/games/${S.gameId}/state`);
+    if (vres.ok) {
+      const view = await vres.json();
+      if (S.animating || S.queue.length) S.pendingView = view;
+      else applyView(view);
+    }
+  } catch (e) { /* WS is up; the next broadcast will still reach us */ }
+}
+
+// Restore a live session on page load (tab refresh / mobile tab kill).
+async function restoreSession() {
+  const gid = localStorage.getItem("poker.gameId");
+  if (!gid) return;
+  try {
+    const res = await fetch(`/games/${gid}/state`);
+    if (!res.ok) {
+      localStorage.removeItem("poker.gameId");
+      return;
+    }
+    const view = await res.json();
+    S.gameId = gid;
+    S.phase = "table";
+    applyView(view);            // no animation on restore; also snaps lastSeq
+    await backfillHistory();    // repopulate the log panel
+    openWs();
+  } catch (e) {
+    // Server unreachable at load: leave the key for next time, show settings.
+  }
 }
 
 function sendAction(action, amount = 0) {
@@ -143,11 +223,14 @@ function showGameOver(winner) {
 
 function newGame() {
   localStorage.removeItem("poker.gameId");
+  S.closing = true; // deliberate close — onclose must not schedule a reconnect
   if (S.ws) { try { S.ws.close(); } catch (e) { /* already closed */ } }
   Object.assign(S, {
     gameId: null, view: null, ws: null, phase: "settings",
     lastSeq: -1, queue: [], animating: false, pendingView: null, skip: false,
+    closing: false,
   });
+  wsRetryDelay = 1000;
   el("history").innerHTML = "";
   el("caption").textContent = "";
   render();
@@ -521,3 +604,4 @@ document.addEventListener("visibilitychange", () => { if (document.hidden && S.a
 
 initHistoryToggle();
 initSimpleMode();
+restoreSession();
