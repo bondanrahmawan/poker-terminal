@@ -20,27 +20,41 @@ def _fmt_cards(cards) -> str:
 class TerminalPlayer(Player):
     def __init__(self, player_id: str, name: str, starting_chips: int):
         super().__init__(player_id, name, starting_chips)
-        self._last_log_count = 0  # Track how many log entries we've seen
+        self._last_event_seq = -1  # Cursor into game.events
 
-    def _show_recent_actions(self, hand_log: list):
-        """Show opponent actions since last prompt."""
-        new_entries = hand_log[self._last_log_count:]
-        if new_entries:
-            print(f"\n{'─' * 50}")
-            for entry in new_entries:
-                # Skip dealing messages and focus on actions
-                entry_stripped = entry.strip()
-                if any(keyword in entry_stripped.lower() for keyword in [
-                    'fold', 'call', 'raise', 'check', 'all-in', 'bets',
-                    'posts sb', 'posts bb', 'ante', 'wins',
-                    '--- flop ---', '--- turn ---', '--- river ---',
-                    '--- showdown ---', '--- new hand ---'
-                ]):
-                    print(f"  {entry_stripped}")
-            print(f"{'─' * 50}")
-            self._last_log_count = len(hand_log)
+    def _format_event(self, e) -> str:
+        """Render a single event as a one-line summary, or '' to skip it."""
+        d = e.data
+        if e.type == 'hand_started':
+            return f"  --- NEW HAND #{d['hand_number']} ---"
+        if e.type == 'blind_posted':
+            return f"  {d['name']} posts {d['kind']} blind: {d['amount']}    Pot: {d['pot']}"
+        if e.type == 'street_started':
+            cards = ' '.join(c['display'] for c in d.get('cards_dealt', []))
+            return f"  --- {d['street'].upper()} ---  {cards}".rstrip()
+        if e.type == 'action_taken':
+            tag = "  (ALL-IN)" if d.get('all_in') else ""
+            return f"  {d['name']} {d['action']} {d['amount']}    Pot: {d['pot']}{tag}"
+        if e.type == 'hole_cards_shown':
+            cards = ' '.join(c['display'] for c in d['cards'])
+            return f"  {d['name']} shows {cards}  ({d['hand_name']})"
+        if e.type == 'pot_awarded':
+            return f"  {d['name']} wins {d['amount']}"
+        return ""
 
-    def get_action(self, game_state: dict) -> Tuple[str, int]:
+    def _show_recent_events(self, events: list):
+        """Show what happened since this player's last prompt, from the event stream."""
+        new_events = [e for e in events if e.seq > self._last_event_seq]
+        if new_events:
+            lines = [line for line in (self._format_event(e) for e in new_events) if line]
+            if lines:
+                print(f"\n{'─' * 50}")
+                for line in lines:
+                    print(line)
+                print(f"{'─' * 50}")
+            self._last_event_seq = events[-1].seq
+
+    def get_action(self, game_state: dict) -> Tuple[PlayerAction, int]:
         min_call        = game_state.get('min_call', 0)
         min_raise       = game_state.get('min_raise', 0)
         pot_size        = game_state.get('pot_size', 0)
@@ -49,12 +63,7 @@ class TerminalPlayer(Player):
         player_role     = game_state.get('player_role', '')
 
         # Show opponent actions since last turn
-        self._show_recent_actions(hand_log)
-
-        # Reset counter at start of new hand
-        if any('--- NEW HAND ---' in entry for entry in hand_log[-5:]):
-            self._last_log_count = 0
-            self._show_recent_actions(hand_log)
+        self._show_recent_events(game_state.get('events', []))
 
         # ── Info header ──────────────────────────────────────────────────────
         print("\n" + "=" * 50)

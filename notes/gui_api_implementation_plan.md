@@ -1,6 +1,9 @@
 # GUI API Implementation Plan — Decoupling the Engine from the TUI
 
-**Status:** Approved design, not yet implemented.
+**Status:** Implemented (Phases 1–4). See `core/events.py`, `core/action_request.py`,
+`core/errors.py`, `core/views.py`, `players/agent.py`, and `api/`, with tests in
+`tests/test_events.py`, `tests/test_resumable_engine.py`, `tests/test_views.py`,
+`tests/test_api.py`.
 **Audience:** An implementer starting with a fresh context window. This document is
 self-contained: it describes the current architecture, the exact problems, the target
 design, and a phase-by-phase implementation guide with acceptance criteria. Read the

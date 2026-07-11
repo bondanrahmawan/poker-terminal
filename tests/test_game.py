@@ -11,6 +11,7 @@ This file tests:
 E2E gameplay is tested in test_automated_play.py
 """
 import pytest
+import random
 from core.game import Game
 from players.bot import BotPlayer
 from core.player import Player, PlayerAction
@@ -80,6 +81,7 @@ class TestBlinds:
 
     def test_blind_positions_rotate(self):
         """Test that SB/BB positions rotate with dealer."""
+        random.seed(1)  # deterministic: no player busts in hand 1, so dealer rotates 0->1
         g = Game(big_blind=20)
         g.add_player(BotPlayer("p1", "Alice", 1000))
         g.add_player(BotPlayer("p2", "Bob", 1000))

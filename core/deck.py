@@ -4,8 +4,10 @@ from core.card import Card, Suit, Rank
 
 
 class Deck:
-    def __init__(self, min_rank: int = 2):
+    def __init__(self, min_rank: int = 2, seed: int = None):
         self.min_rank = min_rank
+        # seed=None keeps the historical behavior (global random, not seedable).
+        self._rng = random.Random(seed) if seed is not None else random
         self.cards = []
         self._build()
 
@@ -18,7 +20,7 @@ class Deck:
         ]
 
     def shuffle(self):
-        random.shuffle(self.cards)
+        self._rng.shuffle(self.cards)
 
     def draw(self, count: int = 1) -> List[Card]:
         if count > len(self.cards):

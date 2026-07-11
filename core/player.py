@@ -10,6 +10,8 @@ class PlayerAction(Enum):
     ALL_IN = "all-in"
 
 class Player:
+    interactive = False  # engine pauses for this player instead of calling get_action()
+
     def __init__(self, player_id: str, name: str, starting_chips: int):
         self.player_id = player_id
         self.name = name

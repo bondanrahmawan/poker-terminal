@@ -40,10 +40,17 @@ class Rank:
         return mapping.get(rank, str(rank))
 
 
+SUIT_CODE = {Suit.SPADES: 'S', Suit.HEARTS: 'H', Suit.DIAMONDS: 'D', Suit.CLUBS: 'C'}
+
+
 class Card:
     def __init__(self, rank, suit):
         self.rank = rank
         self.suit = suit
+
+    def to_dict(self) -> dict:
+        """JSON-safe representation for serialization (Phase 3)."""
+        return {"rank": self.rank, "suit": SUIT_CODE[self.suit], "display": repr(self)}
 
     def __repr__(self):
         rank_str = Rank.to_string(self.rank)

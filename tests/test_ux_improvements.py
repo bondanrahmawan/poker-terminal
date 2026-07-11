@@ -7,6 +7,7 @@ from unittest.mock import patch, MagicMock
 from players.terminal import TerminalPlayer
 from core.player import PlayerAction
 from core.card import Card, Suit, Rank
+from core.events import GameEvent
 
 
 class TestInputValidation:
@@ -111,57 +112,94 @@ class TestInputValidation:
 class TestOpponentActionFeed:
     """Tests for real-time opponent action feed in TerminalPlayer."""
 
-    def test_terminal_player_has_log_counter(self):
-        """Test TerminalPlayer tracks log count."""
+    def test_terminal_player_has_event_cursor(self):
+        """Test TerminalPlayer tracks an event cursor."""
         player = TerminalPlayer("h1", "Human", 1000)
-        assert hasattr(player, '_last_log_count')
-        assert player._last_log_count == 0
+        assert hasattr(player, '_last_event_seq')
+        assert player._last_event_seq == -1
 
-    def test_show_recent_actions_filters_relevant(self):
-        """Test action feed filters for relevant poker actions."""
+    def test_show_recent_events_renders_actions(self):
+        """Test action feed renders relevant events and advances the cursor."""
         player = TerminalPlayer("h1", "Human", 1000)
-        
-        hand_log = [
-            "Alice          fold                        0    Pot: 30",
-            "Dealing cards to players",
-            "Bob            raise                      60    Pot: 90",
-            "--- FLOP ---",
-            "Some irrelevant message",
+
+        events = [
+            GameEvent(0, 'action_taken', {'player_id': 'a', 'name': 'Alice',
+                                          'action': 'fold', 'amount': 0, 'pot': 30,
+                                          'all_in': False}),
+            GameEvent(1, 'action_taken', {'player_id': 'b', 'name': 'Bob',
+                                          'action': 'raise', 'amount': 60, 'pot': 90,
+                                          'all_in': False}),
+            GameEvent(2, 'street_started', {'street': 'flop',
+                                            'cards_dealt': [{'rank': 14, 'suit': 'S', 'display': 'A♠'},
+                                                            {'rank': 13, 'suit': 'D', 'display': 'K♦'}],
+                                            'community': []}),
+            GameEvent(3, 'hole_cards_dealt', {'player_id': 'a', 'name': 'Alice',
+                                              'cards': [{'rank': 2, 'suit': 'C', 'display': '2♣'}]}),
         ]
-        
+
         import io
         import sys
         captured = io.StringIO()
         sys.stdout = captured
-        
-        player._show_recent_actions(hand_log)
-        
+
+        player._show_recent_events(events)
+
         sys.stdout = sys.__stdout__
         output = captured.getvalue()
-        
-        # Should show fold, raise, and FLOP
+
+        # Should render fold, raise, and the FLOP street
         assert 'fold' in output
         assert 'raise' in output
         assert 'FLOP' in output
-        # Should NOT show irrelevant message
-        assert 'irrelevant' not in output
-        # Counter should update
-        assert player._last_log_count == len(hand_log)
+        # hole_cards_dealt is private and must not leak into the feed
+        assert '2♣' not in output
+        # Cursor should advance to the last event's seq
+        assert player._last_event_seq == 3
 
-    def test_show_recent_actions_empty(self):
-        """Test action feed handles empty log."""
+    def test_show_recent_events_only_new(self):
+        """Test the feed only renders events past the cursor."""
         player = TerminalPlayer("h1", "Human", 1000)
-        
+        player._last_event_seq = 1
+
+        events = [
+            GameEvent(0, 'action_taken', {'name': 'Alice', 'action': 'fold',
+                                          'amount': 0, 'pot': 30, 'all_in': False}),
+            GameEvent(1, 'action_taken', {'name': 'Bob', 'action': 'call',
+                                          'amount': 20, 'pot': 50, 'all_in': False}),
+            GameEvent(2, 'action_taken', {'name': 'Carol', 'action': 'raise',
+                                          'amount': 60, 'pot': 110, 'all_in': False}),
+        ]
+
         import io
         import sys
         captured = io.StringIO()
         sys.stdout = captured
-        
-        player._show_recent_actions([])
-        
+
+        player._show_recent_events(events)
+
         sys.stdout = sys.__stdout__
         output = captured.getvalue()
-        
+
+        # Only Carol's action is new
+        assert 'Carol' in output
+        assert 'Alice' not in output
+        assert 'Bob' not in output
+        assert player._last_event_seq == 2
+
+    def test_show_recent_events_empty(self):
+        """Test action feed handles an empty event list."""
+        player = TerminalPlayer("h1", "Human", 1000)
+
+        import io
+        import sys
+        captured = io.StringIO()
+        sys.stdout = captured
+
+        player._show_recent_events([])
+
+        sys.stdout = sys.__stdout__
+        output = captured.getvalue()
+
         # Should not print anything
         assert output.strip() == ''
 
@@ -186,7 +224,7 @@ class TestBetCancellation:
         }
         
         # Mock input to: choose 'raise', then cancel, then fold (to exit main loop)
-        with patch.object(player, '_show_recent_actions'):
+        with patch.object(player, '_show_recent_events'):
             with patch('builtins.input', side_effect=['r', 'cancel', 'f']):
                 action, amt = player.get_action(game_state)
         
@@ -220,7 +258,7 @@ class TestPotOddsDisplay:
         captured = io.StringIO()
         sys.stdout = captured
         
-        with patch.object(player, '_show_recent_actions'):
+        with patch.object(player, '_show_recent_events'):
             with patch('builtins.input', side_effect=['f']):
                 try:
                     player.get_action(game_state)
