@@ -1,15 +1,43 @@
 "use strict";
 
-// Client state (trimmed to what snapshot rendering needs; the event queue and
-// animation fields from the spec arrive in a later step).
 const S = {
   gameId: null,
   view: null,
   ws: null,
   phase: "settings", // "settings" | "table"
+  lastSeq: -1,        // highest event seq seen (dedupe + backfill cursor)
+  queue: [],          // events awaiting animation
+  animating: false,
+  pendingView: null,  // snapshot held back until the queue drains
+  skip: false,        // fast-forward flag
 };
 
 const el = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Per-event dwell times (ms), from browser_play_assessment.md §6.3. Variable
+// cases (fold, per-card streets) are handled in dwellFor().
+const DWELL = {
+  hand_started: 800,
+  seating: 0,
+  hole_cards_dealt: 400,
+  blind_posted: 250,
+  action_taken: 650,
+  showdown_started: 500,
+  hole_cards_shown: 700,
+  pot_awarded: 900,
+  hand_ended: 0,
+  blinds_raised: 600,
+};
+
+function dwellFor(ev) {
+  if (ev.type === "action_taken" && ev.data.action === "fold") return 350;
+  if (ev.type === "street_started") {
+    const n = (ev.data.cards_dealt || []).length;
+    return n * 400; // preflop deals no cards → 0
+  }
+  return DWELL[ev.type] ?? 0;
+}
 
 // ── Networking ───────────────────────────────────────────────────────────────
 
@@ -39,13 +67,24 @@ function openWs() {
 
   ws.onmessage = (evt) => {
     const msg = JSON.parse(evt.data);
-    if (msg.type === "view") {
-      S.view = msg.view;
-      render();
+    if (msg.type === "events") {
+      let added = false;
+      for (const ev of msg.events) {
+        if (ev.seq <= S.lastSeq) continue;                                // dedupe
+        if (S.queue.length && ev.seq <= S.queue[S.queue.length - 1].seq) continue;
+        S.queue.push(ev);
+        added = true;
+      }
+      if (added && !S.animating) pump();
+    } else if (msg.type === "view") {
+      if (S.animating || S.queue.length) {
+        S.pendingView = msg.view; // held back; newer replaces older
+      } else {
+        applyView(msg.view);
+      }
     } else if (msg.type === "error") {
       setStatus(`Rejected: ${msg.reason}${msg.detail ? " — " + msg.detail : ""}`);
     }
-    // "events" are ignored here — animation/pacing is a later step.
   };
 
   ws.onclose = () => setStatus("Disconnected.");
@@ -64,6 +103,129 @@ async function nextHand() {
     // Full between-hands / rebuy / game-over flow is a later step; surface plainly.
     setStatus(`Next hand: ${info.reason || res.status}`);
   }
+}
+
+// ── Event animation ──────────────────────────────────────────────────────────
+
+// Drain the queue one event at a time: caption + seat highlight + history, then
+// dwell. The held-back view is applied once the queue empties (§6.3).
+async function pump() {
+  if (S.animating) return;
+  S.animating = true;
+  disableActionBar();
+  while (S.queue.length) {
+    const ev = S.queue.shift();
+    S.lastSeq = ev.seq;
+    appendHistory(ev);                        // every event, always
+    const line = eventText(ev);
+    if (line) showCaption(ev, line);          // banner + seat highlight
+    await sleep(S.skip ? 0 : dwellFor(ev));
+  }
+  S.skip = false;
+  S.animating = false;
+  if (S.pendingView) {
+    const v = S.pendingView;
+    S.pendingView = null;
+    applyView(v);
+  }
+}
+
+function applyView(view) {
+  S.view = view;
+  if (S.lastSeq < view.last_event_seq) S.lastSeq = view.last_event_seq; // snap (e.g. connect-time view)
+  render();
+}
+
+// A pure event → string (null = history-skipped / no caption). Player names live
+// inside the payloads, so no id→name lookup is needed.
+function eventText(ev) {
+  const d = ev.data;
+  switch (ev.type) {
+    case "hand_started":
+      return `— Hand #${d.hand_number} · blinds ${d.small_blind}/${d.big_blind} —`;
+    case "blind_posted": {
+      const kind = d.kind === "small" ? "SB" : d.kind === "big" ? "BB" : "ante";
+      return `${d.name} posts ${kind} ${d.amount}`;
+    }
+    case "street_started": {
+      if (!d.cards_dealt || !d.cards_dealt.length) return null; // preflop
+      const cards = d.cards_dealt.map((c) => c.display).join(" ");
+      return `${d.street.toUpperCase()} · ${cards}`;
+    }
+    case "action_taken": {
+      if (d.action === "fold") return `${d.name} folds`;
+      if (d.action === "check") return `${d.name} checks · pot ${d.pot}`;
+      if (d.action === "call") return `${d.name} calls ${d.amount} · pot ${d.pot}`;
+      if (d.action === "raise") return `${d.name} raises ${d.amount} · pot ${d.pot}`;
+      if (d.action === "all-in") return `${d.name} all-in ${d.amount} · pot ${d.pot}`;
+      return `${d.name} ${d.action} · pot ${d.pot}`;
+    }
+    case "showdown_started":
+      return "— Showdown —";
+    case "hole_cards_shown": {
+      const cards = d.cards.map((c) => c.display).join(" ");
+      return `${d.name} shows ${cards} — ${d.hand_name}`;
+    }
+    case "pot_awarded":
+      return `${d.name} wins ${d.amount}`;
+    case "hand_ended":
+      return "Hand over";
+    case "blinds_raised":
+      return `Blinds up: ${d.small_blind}/${d.big_blind}`;
+    default:
+      return null; // seating, hole_cards_dealt
+  }
+}
+
+function showCaption(ev, line) {
+  el("caption").textContent = line;
+  setActing(ev.data && ev.data.player_id);
+}
+
+function setActing(pid) {
+  el("seats").querySelectorAll(".seat.acting").forEach((s) => s.classList.remove("acting"));
+  if (!pid) return;
+  const seat = el("seats").querySelector(`.seat[data-pid="${pid}"]`);
+  if (seat) seat.classList.add("acting");
+}
+
+// ── History panel ────────────────────────────────────────────────────────────
+
+function appendHistory(ev) {
+  const line = eventText(ev);
+  if (line === null) return; // skip nulls (seating, own hole cards, preflop)
+  const box = el("history");
+  const div = document.createElement("div");
+  div.className = ev.type === "hand_started" ? "h-line h-hand" : "h-line";
+  div.textContent = line;
+  box.appendChild(div);
+  while (box.childElementCount > 300) box.removeChild(box.firstChild); // cap
+  box.scrollTop = box.scrollHeight;
+}
+
+// Populate the log without animating (table entry / reconnect) and advance the
+// dedupe cursor past what we replayed.
+async function backfillHistory() {
+  const res = await fetch(`/games/${S.gameId}/events?since=-1`);
+  if (!res.ok) return;
+  const data = await res.json().catch(() => ({ events: [] }));
+  for (const ev of data.events || []) {
+    appendHistory(ev);
+    if (ev.seq > S.lastSeq) S.lastSeq = ev.seq;
+  }
+}
+
+function disableActionBar() {
+  el("action-bar").querySelectorAll("button, input").forEach((n) => (n.disabled = true));
+}
+
+function initHistoryToggle() {
+  const panel = el("history-panel");
+  panel.classList.toggle("collapsed", localStorage.getItem("poker.history") === "1");
+  el("history-toggle").onclick = () => {
+    const collapsed = panel.classList.toggle("collapsed");
+    localStorage.setItem("poker.history", collapsed ? "1" : "0");
+  };
 }
 
 // ── Settings → create game ───────────────────────────────────────────────────
@@ -92,8 +254,9 @@ el("settings-form").addEventListener("submit", async (e) => {
   S.view = data.view;
   localStorage.setItem("poker.gameId", S.gameId);
   S.phase = "table";
-  openWs();
   render();
+  await backfillHistory(); // empty for a fresh game; sets lastSeq before WS events arrive
+  openWs();
 });
 
 // ── Rendering ────────────────────────────────────────────────────────────────
@@ -157,6 +320,7 @@ function renderSeats(v) {
 
     const div = document.createElement("div");
     div.className = cls.join(" ");
+    div.dataset.pid = p.player_id;
     div.style.left = x + "%";
     div.style.top = y + "%";
     div.innerHTML =
@@ -187,6 +351,9 @@ function renderHole(v) {
 function renderActionBar(v) {
   const bar = el("action-bar");
   bar.innerHTML = "";
+  // While captions are still playing the view is stale; keep the bar empty so it
+  // can't unlock before the player has seen why it's their turn.
+  if (S.animating) return;
   const you = v.you;
 
   if (you && you.to_act && you.action_request) {
@@ -275,3 +442,11 @@ function toggleRaisePanel(bar, req) {
 function setStatus(text) {
   el("ws-status").textContent = text;
 }
+
+// ── Wiring ───────────────────────────────────────────────────────────────────
+
+// Skip affordance: click the felt (or leave the tab) to fast-forward the queue.
+el("felt").addEventListener("click", () => { S.skip = true; });
+document.addEventListener("visibilitychange", () => { if (document.hidden) S.skip = true; });
+
+initHistoryToggle();
