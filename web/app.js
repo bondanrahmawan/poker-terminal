@@ -96,13 +96,61 @@ function sendAction(action, amount = 0) {
   S.ws.send(JSON.stringify({ action, amount }));
 }
 
-async function nextHand() {
-  const res = await postJSON(`/games/${S.gameId}/hands`, {});
-  if (!res.ok) {
-    const info = await res.json().catch(() => ({}));
-    // Full between-hands / rebuy / game-over flow is a later step; surface plainly.
+async function nextHand(rebuy = false) {
+  const res = await postJSON(`/games/${S.gameId}/hands`, rebuy ? { rebuy: true } : {});
+  if (res.ok) return; // the WS broadcast drives the next hand's render
+  const info = await res.json().catch(() => ({}));
+  if (info.reason === "busted") {
+    showRebuyPrompt();
+  } else if (info.reason === "game_over") {
+    showGameOver(info.winner);
+  } else {
     setStatus(`Next hand: ${info.reason || res.status}`);
   }
+}
+
+async function addChips() {
+  const res = await postJSON(`/games/${S.gameId}/topup`, {});
+  if (res.ok) return; // broadcast updates the stack
+  const info = await res.json().catch(() => ({}));
+  setStatus(`Add chips: ${info.reason || res.status}`);
+}
+
+// Busted (409): the 0-chip player must rebuy before the next hand can start.
+function showRebuyPrompt() {
+  const bar = el("action-bar");
+  bar.innerHTML = "";
+  setStatus("You're out of chips.");
+  const btn = document.createElement("button");
+  btn.textContent = "Rebuy & continue";
+  btn.onclick = () => nextHand(true);
+  bar.appendChild(btn);
+}
+
+// Game over (409): only one funded player remains.
+function showGameOver(winner) {
+  const bar = el("action-bar");
+  bar.innerHTML = "";
+  const banner = document.createElement("div");
+  banner.className = "game-over";
+  banner.textContent = winner ? `Game over — ${winner} wins` : "Game over";
+  bar.appendChild(banner);
+  const btn = document.createElement("button");
+  btn.textContent = "New game";
+  btn.onclick = newGame;
+  bar.appendChild(btn);
+}
+
+function newGame() {
+  localStorage.removeItem("poker.gameId");
+  if (S.ws) { try { S.ws.close(); } catch (e) { /* already closed */ } }
+  Object.assign(S, {
+    gameId: null, view: null, ws: null, phase: "settings",
+    lastSeq: -1, queue: [], animating: false, pendingView: null, skip: false,
+  });
+  el("history").innerHTML = "";
+  el("caption").textContent = "";
+  render();
 }
 
 // ── Event animation ──────────────────────────────────────────────────────────
@@ -381,8 +429,14 @@ function renderActionBar(v) {
   if (v.state === "END" || v.state === "WAITING") {
     const btn = document.createElement("button");
     btn.textContent = "Next hand";
-    btn.onclick = nextHand;
+    btn.onclick = () => nextHand();
     bar.appendChild(btn);
+
+    const add = document.createElement("button");
+    add.textContent = "Add chips";
+    add.className = "chip-btn";
+    add.onclick = addChips;
+    bar.appendChild(add);
   }
 }
 

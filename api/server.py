@@ -122,6 +122,26 @@ def create_app() -> FastAPI:
         await _broadcast(session)
         return {"view": payload}
 
+    @app.post("/games/{game_id}/topup")
+    async def topup(game_id: str):
+        session = _get(game_id)
+
+        def op():
+            with session.lock:
+                session.touch()
+                try:
+                    session.topup()
+                except HandInProgressError:
+                    return ("in_progress", None)
+                return ("ok", session.view())
+
+        status, payload = await asyncio.to_thread(op)
+        if status == "in_progress":
+            return JSONResponse(status_code=409,
+                                content={"reason": "hand_in_progress"})
+        await _broadcast(session)
+        return {"view": payload}
+
     @app.get("/games/{game_id}/stats")
     async def get_stats(game_id: str):
         session = _get(game_id)

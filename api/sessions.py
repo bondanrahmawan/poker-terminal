@@ -10,6 +10,7 @@ from typing import Optional
 
 from core.game import Game
 from core.player import PlayerAction
+from core.state import GameState
 from players.agent import AgentPlayer
 from players.roster import create_bots
 from strategies.difficulty import EASY, NORMAL, HARD
@@ -107,6 +108,16 @@ class GameSession:
             raise HandInProgressError()
 
         self.game.start_hand()
+
+    def topup(self) -> None:
+        """Add starting_chips to the human stack. Only between hands."""
+        if self.game.pending_request is not None or self.game.state != GameState.WAITING:
+            raise HandInProgressError()
+        human = self._human()
+        amount = self.settings["starting_chips"]
+        human.chips += amount
+        self.game.stats[human.player_id]["total_invested"] += amount
+        self.game.stats[human.player_id]["rebuys"] += 1
 
     def submit(self, action_str: str, amount: int = 0) -> None:
         action = PlayerAction(action_str)   # ValueError on unknown action string

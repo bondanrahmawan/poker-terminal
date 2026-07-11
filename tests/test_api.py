@@ -147,3 +147,40 @@ def test_stats_endpoint():
     data = client.get(f"/games/{game_id}/stats").json()
     assert data["hand_count"] == 1
     assert "h1" in data["stats"]
+
+
+def _h1(view):
+    return next(p for p in view["players"] if p["player_id"] == "h1")
+
+
+def test_topup_before_hand_doubles_chips_and_invested():
+    game_id = _create()["game_id"]
+    r = client.post(f"/games/{game_id}/topup")
+    assert r.status_code == 200, r.text
+    assert _h1(r.json()["view"])["chips"] == 2 * SETTINGS["starting_chips"]
+    stats = client.get(f"/games/{game_id}/stats").json()["stats"]["h1"]
+    assert stats["total_invested"] == 2 * SETTINGS["starting_chips"]
+    assert stats["rebuys"] == 1
+
+
+def test_topup_mid_hand_returns_409_chips_unchanged():
+    game_id = _create()["game_id"]
+    client.post(f"/games/{game_id}/hands")  # now awaiting the human's action
+    state = client.get(f"/games/{game_id}/state").json()
+    assert state["you"]["to_act"]
+    chips_before = _h1(state)["chips"]
+
+    r = client.post(f"/games/{game_id}/topup")
+    assert r.status_code == 409
+    assert r.json()["reason"] == "hand_in_progress"
+    assert _h1(client.get(f"/games/{game_id}/state").json())["chips"] == chips_before
+
+
+def test_topup_then_hand_conserves_chips():
+    game_id = _create()["game_id"]
+    assert client.post(f"/games/{game_id}/topup").status_code == 200
+    view = _play_hand_always_call(game_id)
+    assert view["state"] == "WAITING"
+    state = client.get(f"/games/{game_id}/state").json()
+    # One top-up added starting_chips to the table's total.
+    assert sum(p["chips"] for p in state["players"]) == TOTAL_CHIPS + SETTINGS["starting_chips"]

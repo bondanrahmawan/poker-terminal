@@ -120,6 +120,7 @@ button:disabled { background: #3a5a42; cursor: default; }
 #action-bar input[type="number"] { width: 90px; padding: 0.3rem; background: #1a2a1e; color: inherit; border: 1px solid #3a5a42; border-radius: 4px; }
 #action-bar .hint { width: 100%; text-align: center; font-size: 0.85rem; opacity: 0.85; }
 .chip-btn { background: #3a5a42; }
+.game-over { width: 100%; text-align: center; font-weight: 700; font-size: 1.1rem; color: #e6c84f; }
 
 #ws-status { text-align: center; min-height: 1.2rem; color: #e6c84f; font-size: 0.85rem; }
 #raw { margin-top: 1rem; opacity: 0.6; }
