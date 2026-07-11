@@ -446,7 +446,7 @@ function setStatus(text) {
 // ── Wiring ───────────────────────────────────────────────────────────────────
 
 // Skip affordance: click the felt (or leave the tab) to fast-forward the queue.
-el("felt").addEventListener("click", () => { S.skip = true; });
-document.addEventListener("visibilitychange", () => { if (document.hidden) S.skip = true; });
+el("felt").addEventListener("click", () => { if (S.animating) S.skip = true; });
+document.addEventListener("visibilitychange", () => { if (document.hidden && S.animating) S.skip = true; });
 
 initHistoryToggle();
