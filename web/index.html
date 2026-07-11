@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Poker Terminal</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ── Settings ─────────────────────────────────────────────────────────── -->
+  <section id="settings" class="screen">
+    <h1>Poker Terminal</h1>
+    <form id="settings-form">
+      <label>Your name
+        <input name="player_name" type="text" value="Player" />
+      </label>
+      <label>Bots (1–12)
+        <input name="num_bots" type="number" min="1" max="12" value="3" />
+      </label>
+      <fieldset>
+        <legend>Difficulty</legend>
+        <label class="inline"><input type="radio" name="difficulty" value="easy" /> Easy</label>
+        <label class="inline"><input type="radio" name="difficulty" value="normal" checked /> Normal</label>
+        <label class="inline"><input type="radio" name="difficulty" value="hard" /> Hard</label>
+      </fieldset>
+      <label>Starting chips
+        <input name="starting_chips" type="number" min="1" value="1000" />
+      </label>
+      <label>Big blind
+        <input name="big_blind" type="number" min="2" value="20" />
+      </label>
+      <label>Hands per blind level
+        <input name="hands_per_level" type="number" min="1" value="5" />
+      </label>
+      <label class="inline"><input type="checkbox" name="enable_ante" /> Enable ante</label>
+      <label class="inline"><input type="checkbox" name="short_deck" /> Short deck</label>
+      <label class="inline"><input type="checkbox" name="shuffle_bots" /> Randomise bot seating</label>
+      <button type="submit">Start table</button>
+    </form>
+  </section>
+
+  <!-- ── Table ────────────────────────────────────────────────────────────── -->
+  <section id="table" class="screen hidden">
+    <header id="table-header"></header>
+    <div id="felt">
+      <div id="seats"></div>
+      <div id="center">
+        <div id="community"></div>
+        <div id="pot"></div>
+      </div>
+    </div>
+    <div id="hole"></div>
+    <div id="action-bar"></div>
+    <div id="ws-status"></div>
+    <details id="raw"><summary>raw view</summary><pre id="raw-json"></pre></details>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

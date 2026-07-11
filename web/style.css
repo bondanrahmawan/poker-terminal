@@ -1,0 +1,99 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #0f1a12;
+  color: #e6efe6;
+}
+
+.screen { padding: 1.5rem; max-width: 1000px; margin: 0 auto; }
+.hidden { display: none; }
+
+/* ── Settings form ────────────────────────────────────────────────────────── */
+#settings h1 { text-align: center; }
+#settings-form { display: grid; gap: 0.75rem; max-width: 420px; margin: 0 auto; }
+#settings-form label { display: block; }
+#settings-form label.inline { display: flex; align-items: center; gap: 0.4rem; }
+#settings-form input[type="text"],
+#settings-form input[type="number"] {
+  width: 100%; padding: 0.4rem; margin-top: 0.2rem;
+  background: #1a2a1e; color: inherit; border: 1px solid #3a5a42; border-radius: 4px;
+}
+#settings-form fieldset { border: 1px solid #3a5a42; border-radius: 4px; }
+#settings-form fieldset label.inline { display: inline-flex; margin-right: 1rem; }
+button {
+  padding: 0.5rem 1rem; cursor: pointer;
+  background: #2f7d46; color: #fff; border: none; border-radius: 4px; font-size: 1rem;
+}
+button:hover { background: #379153; }
+button:disabled { background: #3a5a42; cursor: default; }
+
+/* ── Table ────────────────────────────────────────────────────────────────── */
+#table-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; opacity: 0.9; }
+
+#felt {
+  position: relative;
+  height: 460px;
+  background: radial-gradient(ellipse at center, #1f5a34 0%, #143d24 100%);
+  border: 6px solid #5a3a1e;
+  border-radius: 220px / 200px;
+}
+
+#seats { position: absolute; inset: 0; }
+
+.seat {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 130px;
+  padding: 0.4rem;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid #3a5a42;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.seat.you { border-color: #e6c84f; }
+.seat.folded { opacity: 0.4; }
+.seat.busted { opacity: 0.3; filter: grayscale(1); }
+.seat .name { font-weight: 600; }
+.seat .chips { color: #cfe6cf; }
+.badge {
+  display: inline-block; padding: 0 0.35rem; border-radius: 3px;
+  font-size: 0.7rem; font-weight: 700; background: #5a3a1e; color: #fff;
+}
+.badge.allin { background: #a33; }
+.bet { margin-top: 0.2rem; color: #e6c84f; min-height: 1em; }
+
+#center {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%); text-align: center;
+}
+#community { display: flex; gap: 0.3rem; justify-content: center; }
+#pot { margin-top: 0.5rem; font-weight: 600; }
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+.card {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.2rem; height: 3rem; padding: 0 0.3rem;
+  background: #fff; color: #111; border-radius: 4px;
+  font-weight: 700; font-size: 1.1rem;
+}
+.card.red { color: #c02020; }
+.card.back { background: #294a8a; color: #294a8a; }
+.card.empty { background: transparent; border: 1px dashed #3a5a42; }
+
+#hole { display: flex; gap: 0.5rem; justify-content: center; margin: 1rem 0; }
+#hole .card { min-width: 3rem; height: 4rem; font-size: 1.5rem; }
+
+/* ── Action bar ───────────────────────────────────────────────────────────── */
+#action-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: center; min-height: 2.5rem; }
+#action-bar .raise-panel { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; width: 100%; justify-content: center; margin-top: 0.5rem; }
+#action-bar input[type="range"] { width: 220px; }
+#action-bar input[type="number"] { width: 90px; padding: 0.3rem; background: #1a2a1e; color: inherit; border: 1px solid #3a5a42; border-radius: 4px; }
+#action-bar .hint { width: 100%; text-align: center; font-size: 0.85rem; opacity: 0.85; }
+.chip-btn { background: #3a5a42; }
+
+#ws-status { text-align: center; min-height: 1.2rem; color: #e6c84f; font-size: 0.85rem; }
+#raw { margin-top: 1rem; opacity: 0.6; }
+#raw pre { overflow-x: auto; background: #0a1410; padding: 0.5rem; border-radius: 4px; }

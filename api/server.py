@@ -175,6 +175,12 @@ def create_app() -> FastAPI:
             if ws in session.ws_connections:
                 session.ws_connections.remove(ws)
 
+    # ── Static web client ─────────────────────────────────────────────────────
+    # Mounted last so the API routes above take precedence; everything else
+    # falls through to web/ (html=True serves index.html at "/").
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory="web", html=True), name="web")
+
     return app
 
 
