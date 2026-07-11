@@ -18,6 +18,7 @@ from strategies.engine import (
     BalancedStrategy, NitStrategy, ManiacStrategy, TrapperStrategy,
 )
 from core.stats_persistent import PersistentStatsManager
+from core.simulation_stats import SimulationStatsManager
 
 # Color codes for terminal output
 _DIM    = '\033[2m'
@@ -130,7 +131,7 @@ def _view_persistent_stats():
     persistent_stats = PersistentStatsManager()
     
     print("\n" + "=" * 50)
-    print("  Persistent Statistics Viewer")
+    print("  Tournament Statistics")
     print("=" * 50)
     print("\nView Options:")
     print("  1. All players by difficulty")
@@ -164,11 +165,9 @@ def _view_persistent_stats():
             return
         
         # Optional difficulty filter
-        print("\nFilter by difficulty (or press Enter for all):")
-        print("  Easy, Normal, Hard")
-        diff_filter = input("Difficulty: ").strip()
-        if not diff_filter:
-            diff_filter = None
+        print("\nFilter by difficulty:")
+        print("  1. Easy  2. Normal  3. Hard  (Enter for all)")
+        diff_filter = {'1': 'Easy', '2': 'Normal', '3': 'Hard'}.get(input("Choose: ").strip())
         
         persistent_stats.print_persistent_stats(
             difficulty=diff_filter,
@@ -177,11 +176,9 @@ def _view_persistent_stats():
         
     elif view_choice == '3':
         # View session history
-        print("\nFilter by difficulty (or press Enter for all):")
-        print("  Easy, Normal, Hard")
-        diff_filter = input("Difficulty: ").strip()
-        if not diff_filter:
-            diff_filter = None
+        print("\nFilter by difficulty:")
+        print("  1. Easy  2. Normal  3. Hard  (Enter for all)")
+        diff_filter = {'1': 'Easy', '2': 'Normal', '3': 'Hard'}.get(input("Choose: ").strip())
         
         sessions = persistent_stats.get_session_history(diff_filter)
         if not sessions:
@@ -201,14 +198,18 @@ def _view_persistent_stats():
         
     else:
         # View all players by difficulty
-        print("\nFilter by difficulty (or press Enter for all):")
-        print("  Easy, Normal, Hard")
-        diff_filter = input("Difficulty: ").strip()
-        if not diff_filter:
-            diff_filter = None
+        print("\nFilter by difficulty:")
+        print("  1. Easy  2. Normal  3. Hard  (Enter for all)")
+        diff_filter = {'1': 'Easy', '2': 'Normal', '3': 'Hard'}.get(input("Choose: ").strip())
         
         persistent_stats.print_persistent_stats(difficulty=diff_filter)
     
+    input("\nPress Enter to continue...")
+
+
+def _view_simulation_stats():
+    """View simulation benchmark stats from all sessions."""
+    SimulationStatsManager().print_stats()
     input("\nPress Enter to continue...")
 
 
@@ -487,6 +488,11 @@ def _run_strategy_benchmark() -> None:
     _print_benchmark_results(ranked, num_tables, hands_per_table, starting_chips, big_blind,
                              per_table_nets, convergence_snapshots, difficulty, enable_ante, short_deck,
                              street_totals, street_hands)
+    SimulationStatsManager().save_all_vs_all(
+        num_tables, hands_per_table, starting_chips, big_blind,
+        difficulty, enable_ante, short_deck, ranked, per_table_nets,
+    )
+    print(f"  {_DIM}Simulation stats saved.{_RESET}")
 
 
 def _run_h2h_benchmark() -> None:
@@ -565,6 +571,11 @@ def _run_h2h_benchmark() -> None:
     print(f"\r  Simulating... {n_matchups}/{n_matchups} matchups (100%) -- done ({elapsed:.1f}s)")
 
     _print_h2h_matrix(strat_names, wins, net_matrix, num_tables)
+    SimulationStatsManager().save_h2h(
+        num_tables, hands_per_table, starting_chips, big_blind,
+        difficulty, strat_names, wins, net_matrix,
+    )
+    print(f"  {_DIM}Simulation stats saved.{_RESET}")
 
 
 def _print_h2h_matrix(strat_names: list, wins: list, net_matrix: list,
@@ -770,6 +781,11 @@ def _run_parameter_sweep() -> None:
     print(f"\r  Simulating... done ({len(steps)} points, {elapsed:.1f}s)          ")
 
     _print_parameter_sweep(param_name, results, num_tables, hands_per_table, starting_chips, big_blind)
+    SimulationStatsManager().save_param_sweep(
+        num_tables, hands_per_table, starting_chips, big_blind,
+        difficulty, param_name, results,
+    )
+    print(f"  {_DIM}Simulation stats saved.{_RESET}")
 
 
 def _print_parameter_sweep(param_name: str, results: list, num_tables: int,
@@ -867,7 +883,8 @@ def _collect_settings():
     print("\nMode:")
     print("  1. Tournament          (blinds escalate, play against bots)")
     print("  2. Strategy Benchmark  (rank all archetypes over many tables)")
-    print("  3. View Persistent Stats")
+    print("  3. View Tournament Stats")
+    print("  4. View Simulation Stats")
     mode_input = input("Choose (default 1): ").strip()
 
     if mode_input == '2':
@@ -875,6 +892,9 @@ def _collect_settings():
         return None
     if mode_input == '3':
         _view_persistent_stats()
+        return None
+    if mode_input == '4':
+        _view_simulation_stats()
         return None
 
     short_deck  = _prompt_yn("Short deck (6+ cards, Flush > Full House)? (y/n, default n): ")
