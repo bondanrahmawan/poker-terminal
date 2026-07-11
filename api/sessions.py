@@ -51,7 +51,7 @@ class GameSession:
             hands_per_level=settings.get("hands_per_level", 10),
             ante=settings.get("enable_ante", False),
             live_output=False,
-            game_mode="tournament",
+            game_mode=settings.get("game_mode", "tournament"),
             short_deck=settings.get("short_deck", False),
             seed=settings.get("seed"),
         )

@@ -457,6 +457,7 @@ el("settings-form").addEventListener("submit", async (e) => {
     player_name: f.player_name.value || "Player",
     num_bots: Number(f.num_bots.value),
     difficulty: f.difficulty.value,
+    game_mode: f.game_mode.value,
     starting_chips: Number(f.starting_chips.value),
     big_blind: Number(f.big_blind.value),
     hands_per_level: Number(f.hands_per_level.value),
@@ -493,14 +494,19 @@ function renderTable() {
   el("raw-json").textContent = JSON.stringify(v, null, 2);
 
   const b = v.blinds || {};
+  const levelStr = v.game_mode === "cash"
+    ? "Cash"
+    : `Level ${b.level}` +
+      (b.hands_to_level != null ? ` · next in ${b.hands_to_level} hand${b.hands_to_level === 1 ? "" : "s"}` : "");
   el("table-info").innerHTML =
     `<span>Hand #${v.hand_number}</span>` +
-    `<span>Blinds ${b.small}/${b.big}${b.ante ? " (ante " + b.ante + ")" : ""} · Level ${b.level}</span>`;
+    `<span>Blinds ${b.small}/${b.big}${b.ante ? " (ante " + b.ante + ")" : ""} · ${levelStr}</span>`;
 
   renderSeats(v);
   renderCommunity(v);
   el("pot").textContent = `Pot: ${v.pot}`;
   renderHole(v);
+  el("hand-name").textContent = (v.you && v.you.hand_name) || "";
   renderActionBar(v);
 }
 
@@ -545,6 +551,7 @@ function renderSeats(v) {
     div.style.top = y + "%";
     div.innerHTML =
       `<div class="name">${p.name} ${badges.join(" ")}</div>` +
+      (p.style ? `<div class="style">${esc(p.style)}</div>` : "") +
       `<div class="chips">${p.chips}</div>` +
       `<div class="bet">${p.bet_this_round ? "bet " + p.bet_this_round : ""}</div>`;
     seats.appendChild(div);

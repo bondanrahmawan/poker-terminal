@@ -84,6 +84,7 @@ button:disabled { background: #3a5a42; cursor: default; }
 .seat.folded { opacity: 0.4; }
 .seat.busted { opacity: 0.3; filter: grayscale(1); }
 .seat .name { font-weight: 600; }
+.seat .style { font-size: 0.7rem; opacity: 0.55; }
 .seat .chips { color: #cfe6cf; }
 .badge {
   display: inline-block; padding: 0 0.35rem; border-radius: 3px;
@@ -110,8 +111,9 @@ button:disabled { background: #3a5a42; cursor: default; }
 .card.back { background: #294a8a; color: #294a8a; }
 .card.empty { background: transparent; border: 1px dashed #3a5a42; }
 
-#hole { display: flex; gap: 0.5rem; justify-content: center; margin: 1rem 0; }
+#hole { display: flex; gap: 0.5rem; justify-content: center; margin: 1rem 0 0.25rem; }
 #hole .card { min-width: 3rem; height: 4rem; font-size: 1.5rem; }
+#hand-name { text-align: center; min-height: 1.2rem; margin-bottom: 0.5rem; font-size: 0.9rem; color: #9fd0a8; }
 
 /* ── Action bar ───────────────────────────────────────────────────────────── */
 #action-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: center; min-height: 2.5rem; }

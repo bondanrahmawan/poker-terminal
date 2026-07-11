@@ -138,6 +138,68 @@ def test_view_pot_and_bets_consistent():
         g.pending_request.legal_actions
 
 
+# ── v1.2 Tier 3: hand strength, bot style tags, blind countdown ───────────────
+
+def test_hand_name_none_preflop_present_postflop():
+    random.seed(0)
+    g = Game(big_blind=20, live_output=False, seed=5)
+    g.add_player(AgentPlayer("h1", "Human", 1000))
+    g.add_player(CallingPlayer("b1", "B1", 1000))
+    g.add_player(CallingPlayer("b2", "B2", 1000))
+
+    g.start_hand()  # paused for h1 preflop
+    assert g.view_for("h1")["you"]["hand_name"] is None
+
+    # Check/call through to the flop; the calling bots never raise, so each
+    # street pauses for h1 exactly once.
+    guard = 0
+    while g.pending_request is not None and len(g.community_cards) < 3:
+        guard += 1
+        assert guard < 10, "did not reach the flop"
+        legal = g.pending_request.legal_actions
+        act = PlayerAction.CHECK if "check" in legal else PlayerAction.CALL
+        g.submit_action("h1", act, 0)
+
+    assert len(g.community_cards) >= 3
+    name = g.view_for("h1")["you"]["hand_name"]
+    assert isinstance(name, str) and name
+
+    # Spectators have no `you` at all — nothing to leak.
+    assert g.view_for(None)["you"] is None
+
+
+def test_bot_style_tags_in_view():
+    from strategies.profile import StyleProfile
+    from strategies.engine import DesignedBotStrategy
+
+    g = Game(big_blind=20, live_output=False)
+    g.add_player(AgentPlayer("h1", "Human", 1000))
+    profile = StyleProfile(name="TestStyle", play_range=0.5, aggression=0.5,
+                           bluff_freq=0.2, call_freq=0.5)
+    g.add_player(BotPlayer("b1", "B1", 1000, DesignedBotStrategy(profile, 0.6)))
+    g.add_player(BotPlayer("b2", "B2", 1000, SimpleStrategy(aggressiveness=0.4)))
+
+    styles = {p["player_id"]: p["style"] for p in g.view_for("h1")["players"]}
+    assert styles["h1"] is None            # humans have no strategy
+    assert styles["b1"] == "TestStyle"     # designed bot exposes its archetype
+    assert styles["b2"] is None            # simple strategy has no profile
+
+
+def test_hands_to_level_countdown_and_cash_mode():
+    g = Game(big_blind=20, hands_per_level=5, live_output=False)
+    g.add_player(CallingPlayer("p0", "P0", 1000))
+    g.add_player(CallingPlayer("p1", "P1", 1000))
+
+    assert g.view_for(None)["blinds"]["hands_to_level"] == 5  # fresh table
+    g.start_game()
+    assert g.view_for(None)["blinds"]["hands_to_level"] == 4  # one hand played
+
+    g_cash = Game(big_blind=20, live_output=False, game_mode='cash')
+    g_cash.add_player(CallingPlayer("p0", "P0", 1000))
+    g_cash.add_player(CallingPlayer("p1", "P1", 1000))
+    assert g_cash.view_for(None)["blinds"]["hands_to_level"] is None
+
+
 # ── Seedable deck determinism ─────────────────────────────────────────────────
 
 def _play_seeded(seed, n=20):

@@ -6,6 +6,8 @@ cards are ever included. Opponents' cards are revealed exclusively through
 """
 from typing import Optional
 
+from core.evaluator import HandEvaluator, HandRank
+
 
 def build_view(game, viewer_id: Optional[str]) -> dict:
     """Return a JSON-safe dict describing the game from `viewer_id`'s perspective.
@@ -32,6 +34,10 @@ def build_view(game, viewer_id: Optional[str]) -> dict:
             "bet_this_round": game.bet_manager.player_bets_this_round.get(p.player_id, 0),
             "invested_this_hand": game.pot_manager.contributions.get(p.player_id, 0),
             "is_you": is_you,
+            # Strategy archetype tag for designed bots (TUI parity); None for
+            # humans and simple-strategy bots.
+            "style": getattr(getattr(getattr(p, 'strategy', None), 'profile', None),
+                             'name', None),
         }
         if is_you:
             # Never include another player's hole_cards — key omitted entirely so
@@ -42,10 +48,18 @@ def build_view(game, viewer_id: Optional[str]) -> dict:
     you = None
     if viewer_id is not None:
         to_act = pending is not None and pending.player_id == viewer_id
+        viewer = next((p for p in game.players if p.player_id == viewer_id), None)
+        hand_name = None
+        if (viewer is not None and viewer.is_active and len(viewer.hole_cards) == 2
+                and len(game.community_cards) >= 3):
+            score, _ = HandEvaluator.evaluate(
+                viewer.hole_cards, game.community_cards, short_deck=game.short_deck)
+            hand_name = HandRank.to_string(score[0], short_deck=game.short_deck)
         you = {
             "player_id": viewer_id,
             "to_act": to_act,
             "action_request": pending.to_dict() if to_act else None,
+            "hand_name": hand_name,
         }
 
     return {
@@ -56,7 +70,10 @@ def build_view(game, viewer_id: Optional[str]) -> dict:
         "pot": game.pot_manager.total_pot(),
         "pots": pots,
         "blinds": {"small": bs.small_blind, "big": game.big_blind,
-                   "ante": bs.ante, "level": bs.current_level + 1},
+                   "ante": bs.ante, "level": bs.current_level + 1,
+                   "hands_to_level": (
+                       game.hands_per_level - (game.hand_count % game.hands_per_level)
+                       if game.game_mode == 'tournament' else None)},
         "dealer_player_id": (game.players[game.dealer_idx].player_id
                              if game.players else None),
         "game_mode": game.game_mode,

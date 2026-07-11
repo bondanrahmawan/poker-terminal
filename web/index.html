@@ -18,6 +18,11 @@
         <input name="num_bots" type="number" min="1" max="12" value="3" />
       </label>
       <fieldset>
+        <legend>Mode</legend>
+        <label class="inline"><input type="radio" name="game_mode" value="tournament" checked /> Tournament</label>
+        <label class="inline"><input type="radio" name="game_mode" value="cash" /> Cash (fixed blinds)</label>
+      </fieldset>
+      <fieldset>
         <legend>Difficulty</legend>
         <label class="inline"><input type="radio" name="difficulty" value="easy" /> Easy</label>
         <label class="inline"><input type="radio" name="difficulty" value="normal" checked /> Normal</label>
@@ -56,6 +61,7 @@
       </div>
       <div id="caption"></div>
       <div id="hole"></div>
+      <div id="hand-name"></div>
       <div id="action-bar"></div>
       <div id="ws-status"></div>
       <details id="raw"><summary>raw view</summary><pre id="raw-json"></pre></details>

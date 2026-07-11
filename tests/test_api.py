@@ -176,6 +176,48 @@ def test_topup_mid_hand_returns_409_chips_unchanged():
     assert _h1(client.get(f"/games/{game_id}/state").json())["chips"] == chips_before
 
 
+def test_invalid_game_mode_rejected():
+    r = client.post("/games", json=dict(SETTINGS, game_mode="turbo"))
+    assert r.status_code == 422
+
+
+def test_cash_mode_no_blind_escalation():
+    # hands_per_level=1 would escalate every hand in tournament mode; cash must not.
+    settings = dict(SETTINGS, game_mode="cash", hands_per_level=1)
+    r = client.post("/games", json=settings)
+    assert r.status_code == 201
+    body = r.json()
+    game_id = body["game_id"]
+    assert body["view"]["game_mode"] == "cash"
+    assert body["view"]["blinds"]["hands_to_level"] is None
+
+    hands = 0
+    while hands < 3:
+        r = client.post(f"/games/{game_id}/hands")
+        if r.status_code == 409:
+            reason = r.json().get("reason")
+            if reason == "busted":
+                assert client.post(f"/games/{game_id}/topup").status_code == 200
+                continue
+            break  # game_over: blinds assertion below still holds
+        assert r.status_code == 200, r.text
+        view = r.json()["view"]
+        guard = 0
+        while view["you"] and view["you"]["to_act"]:
+            guard += 1
+            assert guard < 50, "runaway action loop"
+            legal = view["you"]["action_request"]["legal_actions"]
+            action = "check" if "check" in legal else "call"
+            view = client.post(f"/games/{game_id}/action",
+                               json={"action": action}).json()["view"]
+        hands += 1
+
+    assert hands >= 1
+    state = client.get(f"/games/{game_id}/state").json()
+    assert state["blinds"]["big"] == SETTINGS["big_blind"]
+    assert state["blinds"]["small"] == SETTINGS["big_blind"] // 2
+
+
 def test_topup_then_hand_conserves_chips():
     game_id = _create()["game_id"]
     assert client.post(f"/games/{game_id}/topup").status_code == 200
