@@ -44,6 +44,7 @@
     <div id="table-main">
       <header id="table-header">
         <div id="table-info"></div>
+        <button id="stats-btn" type="button" class="chip-btn">Stats</button>
         <label id="simple-toggle" class="inline"><input type="checkbox" /> Simple view</label>
       </header>
       <div id="felt">
@@ -64,6 +65,17 @@
       <div id="history"></div>
     </aside>
   </section>
+
+  <!-- ── Stats modal ──────────────────────────────────────────────────────── -->
+  <div id="stats-modal" class="hidden">
+    <div id="stats-box">
+      <div id="stats-head">
+        <span id="stats-title">Session stats</span>
+        <button id="stats-close" type="button">✕</button>
+      </div>
+      <div id="stats-body"></div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

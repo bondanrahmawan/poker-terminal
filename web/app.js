@@ -14,6 +14,10 @@ const S = {
 };
 
 let wsRetryDelay = 1000; // reconnect backoff: 1s, 2s, 4s … cap 10s
+let handWinnings = {};   // pid → {pid, name, amount}; reset each hand (V2 summary)
+
+const esc = (s) => String(s).replace(/[&<>"']/g,
+  (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
 const el = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -231,8 +235,10 @@ function newGame() {
     closing: false,
   });
   wsRetryDelay = 1000;
+  handWinnings = {};
   el("history").innerHTML = "";
   el("caption").textContent = "";
+  document.title = "Poker Terminal";
   render();
 }
 
@@ -247,10 +253,11 @@ async function pump() {
   while (S.queue.length) {
     const ev = S.queue.shift();
     S.lastSeq = ev.seq;
-    appendHistory(ev);                        // every event, always
+    appendHistory(ev);                        // every event, always (also tracks winnings)
     const line = eventText(ev);
     if (line) showCaption(ev, line);          // banner + seat highlight
-    await sleep(S.skip ? 0 : dwellFor(ev));
+    // No caption → nothing to read → no dwell (kills hand-start dead air).
+    await sleep(S.skip || !line ? 0 : dwellFor(ev));
   }
   S.skip = false;
   S.animating = false;
@@ -300,7 +307,7 @@ function eventText(ev) {
     case "pot_awarded":
       return `${d.name} wins ${d.amount}`;
     case "hand_ended":
-      return "Hand over";
+      return handEndSummary();
     case "blinds_raised":
       return `Blinds up: ${d.small_blind}/${d.big_blind}`;
     default:
@@ -322,7 +329,29 @@ function setActing(pid) {
 
 // ── History panel ────────────────────────────────────────────────────────────
 
+// Winnings accumulator for the V2 hand-end summary. Runs for every event in
+// both the live (pump) and backfill paths, always before eventText(hand_ended).
+function trackEvent(ev) {
+  if (ev.type === "hand_started") {
+    handWinnings = {};
+  } else if (ev.type === "pot_awarded") {
+    const d = ev.data;
+    const w = handWinnings[d.player_id] || { pid: d.player_id, name: d.name, amount: 0 };
+    w.amount += d.amount;
+    handWinnings[d.player_id] = w;
+  }
+}
+
+function handEndSummary() {
+  const youId = S.view && S.view.you ? S.view.you.player_id : null;
+  const parts = Object.values(handWinnings)
+    .sort((a, b) => b.amount - a.amount)
+    .map((w) => (w.pid === youId ? `You win ${w.amount}` : `${w.name} wins ${w.amount}`));
+  return parts.length ? `Hand over — ${parts.join(" · ")}` : "Hand over";
+}
+
 function appendHistory(ev) {
+  trackEvent(ev);
   const line = eventText(ev);
   if (line === null) return; // skip nulls (seating, own hole cards, preflop)
   const box = el("history");
@@ -348,6 +377,50 @@ async function backfillHistory() {
 
 function disableActionBar() {
   el("action-bar").querySelectorAll("button, input").forEach((n) => (n.disabled = true));
+}
+
+// ── Stats modal ──────────────────────────────────────────────────────────────
+
+async function showStats() {
+  if (!S.gameId) return;
+  const res = await fetch(`/games/${S.gameId}/stats`);
+  if (!res.ok) return;
+  const data = await res.json().catch(() => null);
+  if (!data) return;
+
+  const byId = {};
+  ((S.view && S.view.players) || []).forEach((p) => { byId[p.player_id] = p; });
+
+  const rows = Object.entries(data.stats).map(([pid, s]) => {
+    const p = byId[pid] || { name: pid, chips: 0 };
+    return {
+      name: p.name,
+      played: s.hands_played || 0,
+      won: s.hands_won || 0,
+      net: p.chips - (s.total_invested || 0),
+      best: s.best_hand_name && s.best_hand_name !== "-" ? s.best_hand_name : "—",
+      rebuys: s.rebuys || 0,
+    };
+  }).sort((a, b) => b.net - a.net);
+
+  el("stats-title").textContent =
+    `Session stats · ${data.hand_count} hand${data.hand_count === 1 ? "" : "s"}`;
+  el("stats-body").innerHTML =
+    `<table><thead><tr><th>Player</th><th>Hands</th><th>Won</th><th>Win%</th>` +
+    `<th>Net</th><th>Best hand</th><th>Rebuys</th></tr></thead><tbody>` +
+    rows.map((r) => {
+      const wr = r.played ? ((r.won / r.played) * 100).toFixed(1) : "0.0";
+      const net = (r.net >= 0 ? "+" : "") + r.net;
+      return `<tr><td>${esc(r.name)}</td><td>${r.played}</td><td>${r.won}</td>` +
+        `<td>${wr}%</td><td class="${r.net >= 0 ? "pos" : "neg"}">${net}</td>` +
+        `<td>${esc(r.best)}</td><td>${r.rebuys}</td></tr>`;
+    }).join("") +
+    `</tbody></table>`;
+  el("stats-modal").classList.remove("hidden");
+}
+
+function closeStats() {
+  el("stats-modal").classList.add("hidden");
 }
 
 function initHistoryToggle() {
@@ -503,7 +576,12 @@ function renderActionBar(v) {
   if (S.animating) return;
   const you = v.you;
 
-  if (you && you.to_act && you.action_request) {
+  // "Your turn" attention cue: pulse + tab title (helps backgrounded tabs).
+  const toAct = !!(you && you.to_act && you.action_request);
+  bar.classList.toggle("your-turn", toAct);
+  document.title = toAct ? "● Your turn — Poker Terminal" : "Poker Terminal";
+
+  if (toAct) {
     renderActions(bar, you.action_request);
     return;
   }
@@ -601,6 +679,44 @@ function setStatus(text) {
 // Skip affordance: click the felt (or leave the tab) to fast-forward the queue.
 el("felt").addEventListener("click", () => { if (S.animating) S.skip = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden && S.animating) S.skip = true; });
+
+// Stats modal wiring: button, ✕, backdrop click.
+el("stats-btn").addEventListener("click", showStats);
+el("stats-close").addEventListener("click", closeStats);
+el("stats-modal").addEventListener("click", (e) => {
+  if (e.target === el("stats-modal")) closeStats();
+});
+
+// Keyboard shortcuts (V4). Driven by clicking the rendered buttons so all
+// gating (animating, disabled, legality) stays in renderActionBar.
+document.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, textarea, select")) return;
+  if (!el("stats-modal").classList.contains("hidden")) {
+    if (e.key === "Escape") closeStats();
+    return;
+  }
+  if (S.phase !== "table") return;
+
+  const bar = el("action-bar");
+  const panel = bar.querySelector(".raise-panel");
+  if (e.key === "Escape" && panel) { panel.remove(); return; }
+  if (e.key === "Enter" && panel) {
+    e.preventDefault();
+    panel.querySelector(".confirm").click();
+    return;
+  }
+
+  const byLabel = (pred) =>
+    [...bar.querySelectorAll("button")].find((b) => !b.disabled && pred(b.textContent));
+  const k = e.key.toLowerCase();
+  let btn = null;
+  if (k === "f") btn = byLabel((t) => t === "Fold");
+  else if (k === "c") btn = byLabel((t) => t === "Check" || t.startsWith("Call"));
+  else if (k === "r") btn = byLabel((t) => t === "Raise");
+  else if (k === "a") btn = byLabel((t) => t.startsWith("All-in"));
+  else if (k === "n") btn = byLabel((t) => t === "Next hand");
+  if (btn) { e.preventDefault(); btn.click(); }
+});
 
 initHistoryToggle();
 initSimpleMode();

@@ -122,9 +122,41 @@ button:disabled { background: #3a5a42; cursor: default; }
 .chip-btn { background: #3a5a42; }
 .game-over { width: 100%; text-align: center; font-weight: 700; font-size: 1.1rem; color: #e6c84f; }
 
+#action-bar.your-turn { border-radius: 6px; animation: turn-pulse 1.6s ease-in-out infinite; }
+@keyframes turn-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 212, 71, 0); }
+  50%      { box-shadow: 0 0 0 3px rgba(255, 212, 71, 0.35); }
+}
+
 #ws-status { text-align: center; min-height: 1.2rem; color: #e6c84f; font-size: 0.85rem; }
 #raw { margin-top: 1rem; opacity: 0.6; }
 #raw pre { overflow-x: auto; background: #0a1410; padding: 0.5rem; border-radius: 4px; }
+
+/* ── Stats modal ──────────────────────────────────────────────────────────── */
+#stats-modal {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center;
+}
+#stats-modal.hidden { display: none; }
+#stats-box {
+  background: #12241a; border: 1px solid #3a5a42; border-radius: 8px;
+  max-width: 640px; width: calc(100% - 2rem); max-height: 80vh; overflow: auto;
+}
+#stats-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.6rem 0.9rem; border-bottom: 1px solid #26402c; font-weight: 600;
+}
+#stats-close { background: none; padding: 0 0.4rem; font-size: 1rem; }
+#stats-close:hover { background: #26402c; }
+#stats-body { padding: 0.6rem 0.9rem; overflow-x: auto; }
+#stats-body table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+#stats-body th, #stats-body td { text-align: right; padding: 0.3rem 0.4rem; white-space: nowrap; }
+#stats-body th:first-child, #stats-body td:first-child { text-align: left; }
+#stats-body thead th { border-bottom: 1px solid #26402c; opacity: 0.8; }
+#stats-body .pos { color: #7fd68f; }
+#stats-body .neg { color: #e08585; }
+#stats-btn { flex-shrink: 0; font-size: 0.85rem; padding: 0.3rem 0.7rem; }
 
 /* ── Simple display mode ──────────────────────────────────────────────────────
    CSS-only: drop the felt ellipse and absolute positioning; inline left/top are
