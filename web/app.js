@@ -228,6 +228,22 @@ function initHistoryToggle() {
   };
 }
 
+// Simple/mobile display mode: a pure CSS switch via body.simple. Default ON on
+// narrow viewports when the user hasn't chosen yet.
+function initSimpleMode() {
+  const stored = localStorage.getItem("poker.simple");
+  const simple = stored === null
+    ? matchMedia("(max-width: 640px)").matches
+    : stored === "1";
+  const box = el("simple-toggle").querySelector("input");
+  box.checked = simple;
+  document.body.classList.toggle("simple", simple);
+  box.addEventListener("change", () => {
+    document.body.classList.toggle("simple", box.checked);
+    localStorage.setItem("poker.simple", box.checked ? "1" : "0");
+  });
+}
+
 // ── Settings → create game ───────────────────────────────────────────────────
 
 el("settings-form").addEventListener("submit", async (e) => {
@@ -273,7 +289,7 @@ function renderTable() {
   el("raw-json").textContent = JSON.stringify(v, null, 2);
 
   const b = v.blinds || {};
-  el("table-header").innerHTML =
+  el("table-info").innerHTML =
     `<span>Hand #${v.hand_number}</span>` +
     `<span>Blinds ${b.small}/${b.big}${b.ante ? " (ante " + b.ante + ")" : ""} · Level ${b.level}</span>`;
 
@@ -450,3 +466,4 @@ el("felt").addEventListener("click", () => { if (S.animating) S.skip = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden && S.animating) S.skip = true; });
 
 initHistoryToggle();
+initSimpleMode();

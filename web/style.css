@@ -32,7 +32,10 @@ button:disabled { background: #3a5a42; cursor: default; }
 /* ── Table ────────────────────────────────────────────────────────────────── */
 #table:not(.hidden) { display: flex; gap: 1rem; align-items: flex-start; }
 #table-main { flex: 1; min-width: 0; }
-#table-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; opacity: 0.9; }
+#table-header { display: flex; gap: 1rem; align-items: center; margin-bottom: 0.5rem; opacity: 0.9; }
+#table-info { display: flex; flex: 1; gap: 1rem; justify-content: space-between; }
+#simple-toggle { flex-shrink: 0; font-size: 0.85rem; cursor: pointer; }
+#simple-toggle input { cursor: pointer; }
 
 /* ── History panel ──────────────────────────────────────────────────────────── */
 #history-panel {
@@ -121,3 +124,25 @@ button:disabled { background: #3a5a42; cursor: default; }
 #ws-status { text-align: center; min-height: 1.2rem; color: #e6c84f; font-size: 0.85rem; }
 #raw { margin-top: 1rem; opacity: 0.6; }
 #raw pre { overflow-x: auto; background: #0a1410; padding: 0.5rem; border-radius: 4px; }
+
+/* ── Simple display mode ──────────────────────────────────────────────────────
+   CSS-only: drop the felt ellipse and absolute positioning; inline left/top are
+   inert once the seats are position:static, so no JS/DOM change is needed. */
+body.simple #felt { height: auto; background: none; border: none; border-radius: 0; }
+body.simple #seats { position: static; display: flex; flex-direction: column; gap: 4px; }
+body.simple .seat {
+  position: static; transform: none; width: 100%;
+  display: flex; gap: 0.6rem; align-items: baseline; text-align: left;
+}
+body.simple .seat .name { flex: 1; }
+body.simple #center { position: static; transform: none; margin: 0.6rem 0; }
+
+/* ── Mobile touch pass ──────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .screen { padding: 1rem; }
+  #table:not(.hidden) { flex-direction: column; }
+  #history-panel { width: 100%; max-height: 240px; }
+  #action-bar button { min-height: 2.75rem; }
+  #action-bar input[type="range"] { width: 100%; }
+  .seat { font-size: 0.8rem; }
+}
