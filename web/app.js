@@ -405,32 +405,119 @@ async function showStats() {
   ((S.view && S.view.players) || []).forEach((p) => { byId[p.player_id] = p; });
 
   const rows = Object.entries(data.stats).map(([pid, s]) => {
-    const p = byId[pid] || { name: pid, chips: 0 };
+    const p = byId[pid] || { name: pid, chips: 0, style: null };
     return {
       name: p.name,
+      style: p.style || "human",          // bot archetype or human
+      chips: p.chips,
       played: s.hands_played || 0,
       won: s.hands_won || 0,
       net: p.chips - (s.total_invested || 0),
       best: s.best_hand_name && s.best_hand_name !== "-" ? s.best_hand_name : "—",
+      bigPot: s.biggest_pot || 0,
+      wonTotal: s.chips_won || 0,
       rebuys: s.rebuys || 0,
       topups: s.topups || 0,
+      bustHand: s.bust_hand,               // hand number they busted, or null
     };
   }).sort((a, b) => b.net - a.net);
 
   el("stats-title").textContent =
     `Session stats · ${data.hand_count} hand${data.hand_count === 1 ? "" : "s"}`;
-  el("stats-body").innerHTML =
+
+  const statusHTML = (r) =>
+    r.chips > 0 ? `<span class="pos">Active</span>`
+    : r.bustHand ? `<span class="neg">Bust #${r.bustHand}</span>`
+    : `<span class="dim">Out</span>`;
+
+  const table =
     `<table><thead><tr><th>Player</th><th>Hands</th><th>Won</th><th>Win%</th>` +
-    `<th>Net</th><th>Best hand</th><th>Rebuys</th><th>Top-ups</th></tr></thead><tbody>` +
+    `<th>Net</th><th>Big pot</th><th>Won total</th><th>Best hand</th>` +
+    `<th>Rebuys</th><th>Top-ups</th><th>Status</th></tr></thead><tbody>` +
     rows.map((r) => {
       const wr = r.played ? ((r.won / r.played) * 100).toFixed(1) : "0.0";
       const net = (r.net >= 0 ? "+" : "") + r.net;
-      return `<tr><td>${esc(r.name)}</td><td>${r.played}</td><td>${r.won}</td>` +
+      return `<tr><td><div>${esc(r.name)}</div>` +
+        `<div class="stat-style">${esc(r.style)}</div></td>` +
+        `<td>${r.played}</td><td>${r.won}</td>` +
         `<td>${wr}%</td><td class="${r.net >= 0 ? "pos" : "neg"}">${net}</td>` +
-        `<td>${esc(r.best)}</td><td>${r.rebuys}</td><td>${r.topups}</td></tr>`;
+        `<td>${r.bigPot}</td><td>${r.wonTotal}</td>` +
+        `<td>${esc(r.best)}</td><td>${r.rebuys}</td><td>${r.topups}</td>` +
+        `<td>${statusHTML(r)}</td></tr>`;
     }).join("") +
     `</tbody></table>`;
+
+  el("stats-body").innerHTML = table + statsInsights(rows);
   el("stats-modal").classList.remove("hidden");
+}
+
+// Gini of chip counts — mirrors StatsTracker.calculate_gini (chips sorted
+// ascending, 1-indexed weights): G = 2·Σ(i·x_i)/(n·Σx) − (n+1)/n.
+function chipGini(chips) {
+  const xs = chips.map((c) => Math.max(0, c)).sort((a, b) => a - b);
+  const n = xs.length;
+  const sum = xs.reduce((a, b) => a + b, 0);
+  if (n === 0 || sum === 0) return 0;
+  const weighted = xs.reduce((acc, x, i) => acc + (i + 1) * x, 0);
+  return (2 * weighted) / (n * sum) - (n + 1) / n;
+}
+
+// Client-side insights panel: wealth concentration, per-archetype performance,
+// and top performers. Field semantics mirror core/stats_tracker.py.
+function statsInsights(rows) {
+  const g = chipGini(rows.map((r) => r.chips));
+  const gLabel = g > 0.7 ? "extreme" : g > 0.4 ? "high" : g > 0.2 ? "moderate" : "low";
+
+  // Per-archetype: avg net + survival % (share still holding chips).
+  const arch = {};
+  rows.forEach((r) => {
+    const a = arch[r.style] || (arch[r.style] = { net: 0, count: 0, alive: 0 });
+    a.net += r.net;
+    a.count += 1;
+    if (r.chips > 0) a.alive += 1;
+  });
+  const archRows = Object.entries(arch)
+    .map(([label, a]) => ({
+      label,
+      avgNet: Math.round(a.net / a.count),
+      survival: Math.round((a.alive / a.count) * 100),
+    }))
+    .sort((x, y) => y.avgNet - x.avgNet);
+
+  const archTable =
+    `<table><thead><tr><th>Archetype</th><th>Avg net</th><th>Survival</th></tr></thead><tbody>` +
+    archRows.map((a) => {
+      const net = (a.avgNet >= 0 ? "+" : "") + a.avgNet;
+      return `<tr><td>${esc(a.label)}</td>` +
+        `<td class="${a.avgNet >= 0 ? "pos" : "neg"}">${net}</td>` +
+        `<td>${a.survival}%</td></tr>`;
+    }).join("") +
+    `</tbody></table>`;
+
+  // Top performers: best win rate (min 5 hands), biggest single pot won.
+  const eligible = rows.filter((r) => r.played >= 5);
+  const bestWr = eligible.length
+    ? eligible.reduce((b, r) => (r.won / r.played > b.won / b.played ? r : b))
+    : null;
+  const bigWinner = rows.length
+    ? rows.reduce((b, r) => (r.bigPot > b.bigPot ? r : b))
+    : null;
+
+  const perf = [];
+  if (bestWr) {
+    perf.push(`<div class="ins-line">Best win rate: <b>${esc(bestWr.name)}</b> ` +
+      `(${((bestWr.won / bestWr.played) * 100).toFixed(1)}%)</div>`);
+  }
+  if (bigWinner) {
+    perf.push(`<div class="ins-line">Biggest pot: <b>${esc(bigWinner.name)}</b> ` +
+      `(${bigWinner.bigPot})</div>`);
+  }
+
+  return `<div class="insights"><h4>Insights</h4>` +
+    `<div class="ins-line">Wealth concentration (Gini): <b>${g.toFixed(3)}</b> — ${gLabel} inequality</div>` +
+    `<div class="ins-sub">By archetype</div>${archTable}` +
+    `<div class="ins-sub">Top performers</div>${perf.join("")}` +
+    `</div>`;
 }
 
 function closeStats() {

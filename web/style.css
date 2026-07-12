@@ -158,6 +158,12 @@ button:disabled { background: #3a5a42; cursor: default; }
 #stats-body thead th { border-bottom: 1px solid #26402c; opacity: 0.8; }
 #stats-body .pos { color: #7fd68f; }
 #stats-body .neg { color: #e08585; }
+#stats-body .dim { opacity: 0.55; }
+#stats-body .stat-style { font-size: 0.7rem; opacity: 0.55; }
+#stats-body .insights { margin-top: 0.9rem; border-top: 1px solid #26402c; padding-top: 0.7rem; }
+#stats-body .insights h4 { margin: 0 0 0.4rem; font-size: 0.9rem; }
+#stats-body .ins-sub { margin: 0.6rem 0 0.2rem; opacity: 0.7; font-size: 0.8rem; }
+#stats-body .ins-line { font-size: 0.85rem; padding: 0.1rem 0; }
 #stats-btn, #quit-btn { flex-shrink: 0; font-size: 0.85rem; padding: 0.3rem 0.7rem; }
 
 /* ── Simple display mode ──────────────────────────────────────────────────────
