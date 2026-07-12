@@ -259,9 +259,9 @@ async function pump() {
     const ev = S.queue.shift();
     S.lastSeq = ev.seq;
     // The full fresh view is held back until the queue drains, so wipe the
-    // previous hand's board here — otherwise its community cards linger on the
-    // felt while the new hand's blinds/antes animate.
-    if (ev.type === "hand_started") clearCommunity();
+    // previous hand's board here — otherwise its community cards linger, and the
+    // last hand's folded/dimmed seats stay dimmed, while the new hand animates.
+    if (ev.type === "hand_started") { clearCommunity(); resetSeatStates(); }
     const line = appendHistory(ev);           // every event (tracks winnings, returns caption line)
     if (line) showCaption(ev, line);          // banner + seat highlight
     // No caption → nothing to read → no dwell (kills hand-start dead air).
@@ -339,6 +339,14 @@ function setActing(pid) {
   if (!pid) return;
   const seat = el("seats").querySelector(`.seat[data-pid="${pid}"]`);
   if (seat) seat.classList.add("acting");
+}
+
+// Clear last hand's fold dimming + acting glow the moment a new hand starts, so
+// seats don't stay dimmed through the opening animation before the fresh view
+// (which re-renders everyone active) lands. Busted seats stay dimmed.
+function resetSeatStates() {
+  el("seats").querySelectorAll(".seat").forEach((s) =>
+    s.classList.remove("folded", "acting"));
 }
 
 // ── History panel ────────────────────────────────────────────────────────────
