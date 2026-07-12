@@ -3,6 +3,8 @@ Tests for the Phase 4 FastAPI transport (api/).
 Run with: pytest tests/test_api.py -v
 """
 import functools
+import threading
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +12,7 @@ from fastapi.testclient import TestClient
 from api.server import app
 from api.sessions import SessionManager, CapacityError
 from core.stats_persistent import PersistentStatsManager
+from core.simulation_stats import SimulationStatsManager
 
 client = TestClient(app)
 
@@ -298,6 +301,122 @@ def test_cash_mode_no_blind_escalation():
     state = client.get(f"/games/{game_id}/state").json()
     assert state["blinds"]["big"] == SETTINGS["big_blind"]
     assert state["blinds"]["small"] == SETTINGS["big_blind"] // 2
+
+
+# ── Simulation jobs (M4) ──────────────────────────────────────────────────────
+
+_STOPPED_RESULT = {
+    "ranked": [], "per_table_nets": {}, "convergence_snapshots": {},
+    "street_totals": {}, "street_hands": {}, "elapsed": 0.0, "stopped": True,
+}
+
+
+def _patch_sim_stats_file(monkeypatch, tmp_path):
+    sim_file = tmp_path / "simulation_stats.json"
+    monkeypatch.setattr("api.simulations.SimulationStatsManager",
+                        functools.partial(SimulationStatsManager, stats_file=sim_file))
+    return sim_file
+
+
+def _wait_until_idle(timeout=20):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        job = client.get("/simulations/current").json()
+        if job["status"] != "running":
+            return job
+        time.sleep(0.02)
+    raise AssertionError("simulation job did not settle in time")
+
+
+def test_simulation_runs_to_completion(monkeypatch, tmp_path):
+    sim_file = _patch_sim_stats_file(monkeypatch, tmp_path)
+    r = client.post("/simulations",
+                    json={"type": "all_vs_all", "num_tables": 2, "hands_per_table": 20})
+    assert r.status_code == 201
+    assert r.json()["status"] == "running"
+
+    job = _wait_until_idle()
+    assert job["status"] == "done"
+    assert job["done"] == job["total"] == 2
+
+    res = client.get("/simulations/current/result").json()
+    assert res["status"] == "done"
+    assert len(res["result"]["ranked"]) == 8
+    # JSON-safe: the (name, data) tuples came back as arrays.
+    assert isinstance(res["result"]["ranked"][0], list)
+
+    saved = SimulationStatsManager(stats_file=sim_file).get_data()
+    assert len(saved["sessions"]) == 1
+
+
+def test_simulation_second_post_returns_409_busy(monkeypatch):
+    gate = threading.Event()
+
+    def blocked(*a, progress=None, should_stop=None, **k):
+        if progress:
+            progress(0, 1)
+        gate.wait(10)
+        return dict(_STOPPED_RESULT)
+
+    monkeypatch.setattr("api.simulations.benchmark.run_all_vs_all", blocked)
+
+    r = client.post("/simulations",
+                    json={"type": "all_vs_all", "num_tables": 2, "hands_per_table": 20})
+    assert r.status_code == 201
+    try:
+        r2 = client.post("/simulations",
+                         json={"type": "all_vs_all", "num_tables": 2, "hands_per_table": 20})
+        assert r2.status_code == 409
+        assert r2.json()["reason"] == "busy"
+    finally:
+        gate.set()
+        _wait_until_idle()
+
+
+def test_simulation_cancel_yields_partial(monkeypatch):
+    def cancellable(*a, progress=None, should_stop=None, **k):
+        if progress:
+            progress(0, 5)
+        while not (should_stop and should_stop()):
+            time.sleep(0.01)
+        return dict(_STOPPED_RESULT)
+
+    monkeypatch.setattr("api.simulations.benchmark.run_all_vs_all", cancellable)
+
+    assert client.post("/simulations",
+                       json={"type": "all_vs_all", "num_tables": 5, "hands_per_table": 20}
+                       ).status_code == 201
+    assert client.post("/simulations/current/cancel").status_code == 200
+
+    job = _wait_until_idle()
+    assert job["status"] == "cancelled"
+    res = client.get("/simulations/current/result").json()
+    assert res["status"] == "cancelled"
+    assert res["result"]["stopped"] is True
+
+
+def test_simulation_rejects_bad_difficulty():
+    r = client.post("/simulations",
+                    json={"type": "all_vs_all", "num_tables": 2, "hands_per_table": 20,
+                          "difficulty": 0.5})
+    assert r.status_code == 422
+
+
+def test_simulation_accepts_expert_label(monkeypatch):
+    monkeypatch.setattr("api.simulations.benchmark.run_all_vs_all",
+                        lambda *a, progress=None, should_stop=None, **k: dict(_STOPPED_RESULT))
+    r = client.post("/simulations",
+                    json={"type": "all_vs_all", "num_tables": 2, "hands_per_table": 20,
+                          "difficulty": "expert"})
+    assert r.status_code == 201
+    job = _wait_until_idle()
+    assert job["params"]["difficulty"] == 0.9
+
+
+def test_simulation_param_sweep_requires_param_name():
+    r = client.post("/simulations",
+                    json={"type": "param_sweep", "num_tables": 2, "hands_per_table": 20})
+    assert r.status_code == 422
 
 
 def test_topup_then_hand_conserves_chips():

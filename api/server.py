@@ -12,17 +12,22 @@ from fastapi.responses import JSONResponse, Response
 from core.errors import IllegalActionError
 from core.stats_persistent import PersistentStatsManager
 from core.simulation_stats import SimulationStatsManager
-from api.schemas import CreateGameRequest, StartHandRequest, ActionRequestBody
+from api.schemas import (
+    CreateGameRequest, StartHandRequest, ActionRequestBody, CreateSimulationRequest,
+)
 from api.sessions import (
     SessionManager, GameSession, CapacityError,
     BustedError, GameOverError, HandInProgressError,
 )
+from api.simulations import SimulationManager, BusyError, sweep_steps
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Poker Terminal API")
     manager = SessionManager()
     app.state.manager = manager
+    sim_manager = SimulationManager()
+    app.state.sim_manager = sim_manager
 
     def _get(session_id: str) -> GameSession:
         session = manager.get(session_id)
@@ -183,6 +188,52 @@ def create_app() -> FastAPI:
     @app.get("/stats/simulation")
     async def stats_simulation():
         return SimulationStatsManager().get_data()
+
+    # ── Simulation jobs (single-slot) ─────────────────────────────────────────
+
+    @app.post("/simulations", status_code=201)
+    async def start_simulation(body: CreateSimulationRequest):
+        # Clamp browser limits: no queuing an hour-long job from the web UI.
+        params = {
+            "num_tables":      min(body.num_tables, 200),
+            "hands_per_table": min(body.hands_per_table, 1000),
+            "starting_chips":  body.starting_chips,
+            "big_blind":       body.big_blind,
+            "difficulty":      body.difficulty,
+            "ante":            body.ante,
+            "short_deck":      body.short_deck,
+            "param_name":      body.param_name,
+        }
+        if body.type == "param_sweep":
+            params["steps"] = sweep_steps(body.param_name)
+        try:
+            job = sim_manager.start(body.type, params)
+        except BusyError:
+            return JSONResponse(status_code=409, content={"reason": "busy"})
+        return sim_manager.public_view(job)
+
+    @app.get("/simulations/current")
+    async def current_simulation():
+        job = sim_manager.job
+        if job is None:
+            raise HTTPException(status_code=404, detail="No simulation has run")
+        return sim_manager.public_view(job)
+
+    @app.get("/simulations/current/result")
+    async def current_simulation_result():
+        job = sim_manager.job
+        if job is None:
+            raise HTTPException(status_code=404, detail="No simulation has run")
+        if job["result"] is None:
+            return JSONResponse(status_code=409, content={"reason": job["status"]})
+        return {"type": job["type"], "params": job["params"],
+                "status": job["status"], "result": job["result"]}
+
+    @app.post("/simulations/current/cancel")
+    async def cancel_simulation():
+        if not sim_manager.cancel():
+            return JSONResponse(status_code=409, content={"reason": "not_running"})
+        return sim_manager.public_view(sim_manager.job)
 
     # ── WebSocket ─────────────────────────────────────────────────────────────
 

@@ -4,7 +4,7 @@ const S = {
   gameId: null,
   view: null,
   ws: null,
-  phase: "menu", // "menu" | "settings" | "table" | "stats_view" | "sim_stats"
+  phase: "menu", // "menu" | "settings" | "table" | "stats_view" | "sim_stats" | "sim"
   lastSeq: -1,        // highest event seq seen (dedupe + backfill cursor)
   queue: [],          // events awaiting animation
   animating: false,
@@ -800,6 +800,258 @@ function renderSimH2H(buckets) {
   }).join("");
 }
 
+// ── Simulation runner (benchmark jobs) ────────────────────────────────────────
+// Derived stats (CI, z-score, verdicts) are computed here from the raw job
+// result, copying the formulas in main.py's _print_* printers verbatim.
+
+const SIM = { type: "all_vs_all", polling: null };
+const SIM_DEFAULTS = {
+  all_vs_all:  { num_tables: 50, hands_per_table: 500 },
+  h2h:         { num_tables: 50, hands_per_table: 200 },
+  param_sweep: { num_tables: 30, hands_per_table: 300 },
+};
+const fmtNet = (v) => (v >= 0 ? "+" : "") + Math.round(v).toLocaleString();
+// Sample std dev about a given mean (matches the printers' (n-1) formula).
+const sampleSd = (xs, mean) =>
+  xs.length > 1 ? Math.sqrt(xs.reduce((a, x) => a + (x - mean) ** 2, 0) / (xs.length - 1)) : 0;
+
+function setSimType(type) {
+  SIM.type = type;
+  el("sim-type-picker").querySelectorAll("button").forEach((b) =>
+    b.classList.toggle("active", b.dataset.sim === type));
+  el("sim-f-param").classList.toggle("hidden", type !== "param_sweep");
+  el("sim-f-ante").classList.toggle("hidden", type !== "all_vs_all");
+  el("sim-f-short").classList.toggle("hidden", type !== "all_vs_all");
+  const f = el("sim-form");
+  f.num_tables.value = SIM_DEFAULTS[type].num_tables;
+  f.hands_per_table.value = SIM_DEFAULTS[type].hands_per_table;
+}
+
+async function showSim() {
+  S.phase = "sim";
+  render();
+  setSimType(SIM.type);
+  el("sim-results").innerHTML = "";
+  // Recover a running job on entry (refresh mid-run lands here).
+  try {
+    const r = await fetch("/simulations/current");
+    if (r.ok) {
+      const job = await r.json();
+      if (job.status === "running") {
+        setSimType(job.type);
+        enterSimRunning(job);
+        startSimPolling();
+        return;
+      }
+    }
+  } catch (e) { /* no prior job / server down — just show the setup form */ }
+  showSimSetup();
+}
+
+function showSimSetup() {
+  el("sim-run").classList.add("hidden");
+  el("sim-setup").classList.remove("hidden");
+}
+
+function enterSimRunning(job) {
+  el("sim-setup").classList.add("hidden");
+  el("sim-run").classList.remove("hidden");
+  el("sim-results").innerHTML = "";
+  updateSimProgress(job);
+}
+
+function updateSimProgress(job) {
+  const unit = { all_vs_all: "tables", h2h: "matchups", param_sweep: "steps" }[job.type] || "";
+  const pct = job.total ? Math.round(job.done / job.total * 100) : 0;
+  el("sim-progress-line").textContent = `${job.done}/${job.total} ${unit} (${pct}%) · ${job.elapsed}s`;
+  el("sim-bar-fill").style.width = pct + "%";
+}
+
+function stopSimPolling() {
+  if (SIM.polling) { clearInterval(SIM.polling); SIM.polling = null; }
+}
+
+function startSimPolling() {
+  stopSimPolling();
+  SIM.polling = setInterval(async () => {
+    if (S.phase !== "sim") { stopSimPolling(); return; }  // left the screen
+    let job;
+    try {
+      const r = await fetch("/simulations/current");
+      if (!r.ok) { stopSimPolling(); return; }
+      job = await r.json();
+    } catch (e) { return; } // transient — try again next tick
+    if (job.status === "running") { updateSimProgress(job); return; }
+    stopSimPolling();
+    updateSimProgress(job);
+    showSimSetup();
+    if (job.status === "error") {
+      el("sim-results").innerHTML = `<p class="neg">Simulation error: ${esc(job.error || "unknown")}</p>`;
+      return;
+    }
+    loadSimResult();
+  }, 1000);
+}
+
+async function loadSimResult() {
+  try {
+    const r = await fetch("/simulations/current/result");
+    if (!r.ok) return;
+    renderSimResult(await r.json());
+  } catch (e) { /* leave results empty */ }
+}
+
+function renderSimResult(data) {
+  const banner = data.status === "cancelled"
+    ? `<div class="sim-cancelled">Cancelled — partial result below.</div>` : "";
+  let html;
+  if (data.type === "all_vs_all") html = renderSimAvA(data.result, data.params);
+  else if (data.type === "h2h") html = renderSimH2HRun(data.result, data.params);
+  else html = renderSimSweep(data.result, data.params);
+  el("sim-results").innerHTML = banner + html;
+}
+
+// A horizontal CSS bar chart of signed values (green/red, width ∝ |value|).
+function simBarChart(title, rows) {
+  const maxAbs = Math.max(...rows.map((r) => Math.abs(r.value)), 1);
+  const bars = rows.map((r) => {
+    const w = Math.abs(r.value) / maxAbs * 100;
+    return `<div class="sim-bar-row"><span class="sim-bar-label">${esc(r.label)}</span>` +
+      `<span class="sim-bar-track"><span class="sim-bar-val ${r.value >= 0 ? "pos-bg" : "neg-bg"}" ` +
+      `style="width:${w}%"></span></span>` +
+      `<span class="sim-bar-num ${r.value >= 0 ? "pos" : "neg"}">${fmtNet(r.value)}</span></div>`;
+  }).join("");
+  return `<h3 class="sv-group">${esc(title)}</h3><div class="sim-chart">${bars}</div>`;
+}
+
+function renderSimAvA(result, params) {
+  const nt = params.num_tables;
+  const ranked = result.ranked, ptn = result.per_table_nets;
+
+  const rows = ranked.map(([name, data], i) => {
+    const nets = ptn[name] || [];
+    const avg = data.total_net / nt;
+    const sd = sampleSd(nets, avg);
+    const ci = nets.length > 1 ? 1.96 * sd / Math.sqrt(nets.length) : 0;
+    const win = data.hands_played > 0 ? data.hands_won / data.hands_played * 100 : 0;
+    return `<tr><td>${i + 1}</td><td>${esc(name)}</td>` +
+      `<td class="${avg >= 0 ? "pos" : "neg"}">${fmtNet(avg)}</td>` +
+      `<td class="dim">±${Math.round(ci).toLocaleString()}</td>` +
+      `<td class="dim">${Math.round(sd).toLocaleString()}</td>` +
+      `<td>${win.toFixed(1)}%</td><td>${(data.total_rebuys / nt).toFixed(1)}</td>` +
+      `<td>${data.tables_won}/${nt}</td></tr>`;
+  }).join("");
+  const table = `<table><thead><tr><th>#</th><th>Strategy</th><th>Avg Net</th>` +
+    `<th>±95%CI</th><th>Std Dev</th><th>Win%</th><th>Rebuys</th><th>Tbl Won</th></tr></thead>` +
+    `<tbody>${rows}</tbody></table>`;
+
+  // Significance (1st vs 2nd) — pooled two-sample z, verbatim from the printer.
+  let sig = "";
+  if (ranked.length >= 2) {
+    const [tName, tData] = ranked[0], [sName, sData] = ranked[1];
+    const tNets = ptn[tName] || [], sNets = ptn[sName] || [];
+    const tAvg = tData.total_net / nt, sAvg = sData.total_net / nt;
+    const tSd = sampleSd(tNets, tAvg), sSd = sampleSd(sNets, sAvg);
+    const pooledSe = tNets.length > 1
+      ? Math.sqrt(tSd ** 2 / tNets.length + sSd ** 2 / sNets.length) : 1;
+    const z = pooledSe > 0 ? (tAvg - sAvg) / pooledSe : 0;
+    let verdict, cls;
+    if (z >= 2.576) { verdict = "HIGHLY SIGNIFICANT (p < 0.01)"; cls = "pos"; }
+    else if (z >= 1.96) { verdict = "SIGNIFICANT (p < 0.05)"; cls = "pos"; }
+    else if (z >= 1.645) { verdict = "MARGINALLY SIGNIFICANT (p < 0.10)"; cls = "warn"; }
+    else { verdict = "NOT SIGNIFICANT — increase tables for confidence"; cls = "neg"; }
+    sig = `<p class="sim-sig">Significance (1st vs 2nd): z = ${z.toFixed(2)} — ` +
+      `<span class="${cls}">${verdict}</span></p>`;
+  }
+
+  const chart = simBarChart("Net profit (avg chips/table)",
+    ranked.map(([name, data]) => ({ label: name, value: data.total_net / nt })));
+
+  // Convergence check (present only when num_tables ≥ 8).
+  let conv = "";
+  const snaps = result.convergence_snapshots || [];
+  if (snaps.length) {
+    const finalTop3 = ranked.slice(0, 3).map(([n]) => n);
+    const lines = snaps.map(([tablesDone, top3]) => {
+      const match = top3.filter((s) => finalTop3.includes(s)).length;
+      const cls = match === 3 ? "pos" : match >= 2 ? "warn" : "neg";
+      return `<div class="ins-line"><span class="${cls}">[${match}/3]</span> at ` +
+        `${(tablesDone / nt * 100).toFixed(0)}% (${tablesDone} tables): ${top3.map(esc).join(", ")}</div>`;
+    }).join("");
+    const last = snaps[snaps.length - 1][1];
+    const converged = finalTop3.every((s) => last.includes(s)) && last.every((s) => finalTop3.includes(s));
+    const verdict = converged
+      ? `<div class="ins-line pos">Ranking converged by 75% — results are stable</div>`
+      : `<div class="ins-line warn">Ranking shifted after 75% — consider more tables</div>`;
+    conv = `<h3 class="sv-group">Convergence check</h3>${lines}${verdict}`;
+  }
+
+  return table + sig + chart + conv;
+}
+
+function renderSimH2HRun(result, params) {
+  const nt = params.num_tables;
+  const names = result.strat_names, wins = result.wins, n = names.length;
+  const overall = names.map((_, i) =>
+    wins[i].reduce((s, w, j) => (j !== i ? s + w : s), 0) / ((n - 1) * nt) * 100);
+
+  const head = `<tr><th></th>${names.map((x) => `<th>${esc(x)}</th>`).join("")}<th>Overall</th></tr>`;
+  const rows = names.map((ri, i) => {
+    const cells = names.map((_, j) => {
+      if (i === j) return `<td class="dim">—</td>`;
+      const pct = wins[i][j] / nt * 100;
+      const cls = pct >= 60 ? "pos" : pct <= 40 ? "neg" : "";
+      return `<td class="${cls}">${pct.toFixed(0)}%</td>`;
+    }).join("");
+    const ov = overall[i], ocls = ov >= 55 ? "pos" : ov < 45 ? "neg" : "";
+    return `<tr><th>${esc(ri)}</th>${cells}<td class="${ocls}">${ov.toFixed(1)}%</td></tr>`;
+  }).join("");
+  const matrix = `<p class="ssv-note">row beats column</p>` +
+    `<table class="ssv-matrix"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+
+  const ranking = names.map((nm, i) => ({ nm, ov: overall[i] })).sort((a, b) => b.ov - a.ov);
+  const medals = ["1st", "2nd", "3rd"];
+  const domRows = ranking.map((r, i) => {
+    const cls = r.ov >= 55 ? "pos" : r.ov < 45 ? "neg" : "";
+    return `<div class="ins-line">${medals[i] || (i + 1) + "th"}  <b>${esc(r.nm)}</b>  ` +
+      `<span class="${cls}">${r.ov.toFixed(1)}% win rate</span></div>`;
+  }).join("");
+
+  return matrix + `<h3 class="sv-group">Dominance ranking</h3>${domRows}`;
+}
+
+function renderSimSweep(result, params) {
+  const nt = params.num_tables, sc = params.starting_chips;
+  const pts = result.results;  // [[value, avg_net, sd], …]
+  if (!pts.length) return `<p class="sim-cancelled">No data points completed.</p>`;
+
+  let best = pts[0];
+  pts.forEach((p) => { if (p[1] > best[1]) best = p; });
+
+  const rows = pts.map(([v, avg, sd]) => {
+    const ci = nt > 1 ? 1.96 * sd / Math.sqrt(nt) : 0;
+    const isBest = v === best[0];
+    return `<tr class="${isBest ? "sim-best" : ""}"><td>${v.toFixed(1)}${isBest ? " ★" : ""}</td>` +
+      `<td class="${avg >= 0 ? "pos" : "neg"}">${fmtNet(avg)}</td>` +
+      `<td class="dim">±${Math.round(ci).toLocaleString()}</td>` +
+      `<td class="dim">${Math.round(sd).toLocaleString()}</td></tr>`;
+  }).join("");
+  const table = `<table><thead><tr><th>${esc(params.param_name)}</th><th>Avg Net</th>` +
+    `<th>±95%CI</th><th>Std Dev</th></tr></thead><tbody>${rows}</tbody></table>`;
+
+  const nets = pts.map((p) => p[1]);
+  const spread = Math.max(...nets) - Math.min(...nets);
+  const [sens, scls] = spread > sc * 2 ? ["HIGH", "neg"] : spread > sc ? ["MODERATE", "warn"] : ["LOW", "dim"];
+  const summary = `<p class="sim-sig">Optimal: <b>${esc(params.param_name)} = ${best[0].toFixed(1)}</b> ` +
+    `(avg ${fmtNet(best[1])} chips/table)</p>` +
+    `<p class="sim-sig">Sensitivity: <span class="${scls}">${sens}</span></p>`;
+
+  const chart = simBarChart(`${params.param_name} vs net profit (chips/table)`,
+    pts.map(([v, avg]) => ({ label: v.toFixed(1), value: avg })));
+
+  return summary + table + chart;
+}
+
 function initHistoryToggle() {
   const panel = el("history-panel");
   panel.classList.toggle("collapsed", localStorage.getItem("poker.history") === "1");
@@ -868,6 +1120,7 @@ function render() {
   el("table").classList.toggle("hidden", S.phase !== "table");
   el("stats-view").classList.toggle("hidden", S.phase !== "stats_view");
   el("sim-stats-view").classList.toggle("hidden", S.phase !== "sim_stats");
+  el("sim-view").classList.toggle("hidden", S.phase !== "sim");
   if (S.phase === "table") renderTable();
 }
 
@@ -1109,10 +1362,40 @@ el("menu-list").addEventListener("click", (e) => {
   if (btn.dataset.menu === "play") showSettings();
   else if (btn.dataset.menu === "tstats") showStatsView();
   else if (btn.dataset.menu === "sstats") showSimStats();
+  else if (btn.dataset.menu === "sim") showSim();
 });
 el("settings-back").addEventListener("click", showMenu);
 el("stats-view-back").addEventListener("click", showMenu);
 el("sim-stats-back").addEventListener("click", showMenu);
+el("sim-back").addEventListener("click", () => { stopSimPolling(); showMenu(); });
+el("sim-type-picker").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-sim]");
+  if (btn) setSimType(btn.dataset.sim);
+});
+el("sim-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const body = {
+    type: SIM.type,
+    num_tables: Number(f.num_tables.value),
+    hands_per_table: Number(f.hands_per_table.value),
+    starting_chips: Number(f.starting_chips.value),
+    big_blind: Number(f.big_blind.value),
+    difficulty: f.difficulty.value,   // label; the server normalizes to a float
+  };
+  if (SIM.type === "all_vs_all") { body.ante = f.ante.checked; body.short_deck = f.short_deck.checked; }
+  if (SIM.type === "param_sweep") { body.param_name = f.param_name.value; }
+  const res = await postJSON("/simulations", body);
+  if (res.status === 409) { alert("A simulation is already running."); return; }
+  if (!res.ok) { alert(`Could not start simulation (error ${res.status}).`); return; }
+  enterSimRunning(await res.json());
+  startSimPolling();
+});
+el("sim-cancel").addEventListener("click", async () => {
+  el("sim-cancel").disabled = true;
+  try { await fetch("/simulations/current/cancel", { method: "POST" }); } catch (e) { /* poll will settle */ }
+  el("sim-cancel").disabled = false;
+});
 el("ssv-tabs").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-tab]");
   if (!btn) return;

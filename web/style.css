@@ -223,6 +223,52 @@ button:disabled { background: #3a5a42; cursor: default; }
 #ssv-body .ssv-matrix th { text-align: right; }
 #ssv-body .ssv-matrix th:first-child { text-align: left; }
 
+/* ── Simulation runner ────────────────────────────────────────────────────── */
+#sim-header { display: flex; align-items: center; gap: 1rem; }
+#sim-header h1 { margin: 0; }
+#sim-type-picker { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; }
+#sim-type-picker button.active { background: #2f7d46; }
+#sim-form { display: grid; gap: 0.75rem; max-width: 420px; }
+#sim-form label { display: block; }
+#sim-form label.inline { display: flex; align-items: center; gap: 0.4rem; }
+#sim-form input[type="number"], #sim-form select {
+  width: 100%; padding: 0.4rem; margin-top: 0.2rem;
+  background: #1a2a1e; color: inherit; border: 1px solid #3a5a42; border-radius: 4px;
+}
+#sim-form .dim { opacity: 0.55; font-weight: normal; }
+#sim-run { margin: 1rem 0; max-width: 520px; }
+#sim-progress-line { font-variant-numeric: tabular-nums; margin-bottom: 0.4rem; }
+#sim-bar { height: 14px; background: #0a1410; border: 1px solid #26402c; border-radius: 7px; overflow: hidden; }
+#sim-bar-fill { height: 100%; width: 0%; background: #2f7d46; transition: width 0.3s ease; }
+#sim-run-note { margin: 0.4rem 0; font-size: 0.85rem; }
+#sim-cancel { margin-top: 0.2rem; }
+
+#sim-results { overflow-x: auto; margin-top: 1rem; }
+#sim-results table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 1rem; }
+#sim-results th, #sim-results td { text-align: right; padding: 0.3rem 0.4rem; white-space: nowrap; }
+#sim-results th:first-child, #sim-results td:first-child { text-align: left; }
+#sim-results thead th { border-bottom: 1px solid #26402c; opacity: 0.8; }
+#sim-results .pos { color: #7fd68f; }
+#sim-results .neg { color: #e08585; }
+#sim-results .warn { color: #e6c84f; }
+#sim-results .dim { opacity: 0.55; }
+#sim-results .sv-group { font-size: 1rem; margin: 0.8rem 0 0.4rem; }
+#sim-results .sim-sig { font-size: 0.9rem; margin: 0.3rem 0; }
+#sim-results .ins-line { padding: 0.15rem 0; font-size: 0.85rem; }
+#sim-results .sim-cancelled { color: #e6c84f; font-weight: 600; margin-bottom: 0.6rem; }
+#sim-results tr.sim-best { font-weight: 600; }
+
+.sim-chart { display: grid; gap: 0.25rem; max-width: 620px; }
+.sim-bar-row { display: grid; grid-template-columns: 9rem 1fr 4rem; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+.sim-bar-label { overflow: hidden; text-overflow: ellipsis; }
+.sim-bar-track { background: #0a1410; border-radius: 3px; height: 14px; }
+.sim-bar-val { display: block; height: 100%; border-radius: 3px; }
+.sim-bar-val.pos-bg { background: #2f7d46; }
+.sim-bar-val.neg-bg { background: #a33; }
+.sim-bar-num { text-align: right; font-variant-numeric: tabular-nums; }
+.sim-bar-num.pos { color: #7fd68f; }
+.sim-bar-num.neg { color: #e08585; }
+
 /* ── Simple display mode ──────────────────────────────────────────────────────
    CSS-only: drop the felt ellipse and absolute positioning; inline left/top are
    inert once the seats are position:static, so no JS/DOM change is needed. */

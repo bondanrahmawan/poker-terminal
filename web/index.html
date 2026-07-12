@@ -12,7 +12,7 @@
     <h1>Poker Terminal</h1>
     <div id="menu-list">
       <button type="button" data-menu="play">▶ Play</button>
-      <button type="button" data-menu="sim" disabled>▶ Simulation <span class="soon">coming in M4</span></button>
+      <button type="button" data-menu="sim">▶ Simulation</button>
       <button type="button" data-menu="tstats">▶ Tournament stats</button>
       <button type="button" data-menu="sstats">▶ Simulation stats</button>
     </div>
@@ -122,6 +122,64 @@
       </div>
     </div>
     <div id="ssv-body"></div>
+  </section>
+
+  <!-- ── Simulation (benchmark jobs) ──────────────────────────────────────── -->
+  <section id="sim-view" class="screen hidden">
+    <header id="sim-header">
+      <button type="button" class="back-btn" id="sim-back">← Menu</button>
+      <h1>Simulation</h1>
+    </header>
+
+    <div id="sim-setup">
+      <div id="sim-type-picker">
+        <button type="button" class="chip-btn active" data-sim="all_vs_all">All-vs-All</button>
+        <button type="button" class="chip-btn" data-sim="h2h">Head-to-Head</button>
+        <button type="button" class="chip-btn" data-sim="param_sweep">Parameter Sweep</button>
+      </div>
+
+      <form id="sim-form">
+        <label id="sim-f-param" class="hidden">Parameter
+          <select name="param_name">
+            <option value="aggression">Aggression</option>
+            <option value="play_range">Play range</option>
+            <option value="bluff_freq">Bluff frequency</option>
+          </select>
+        </label>
+        <label>Tables <span class="dim">(≤ 200)</span>
+          <input name="num_tables" type="number" min="1" max="200" value="50" />
+        </label>
+        <label>Hands per table <span class="dim">(≤ 1000)</span>
+          <input name="hands_per_table" type="number" min="10" max="1000" value="500" />
+        </label>
+        <label>Starting chips
+          <input name="starting_chips" type="number" min="100" value="1000" />
+        </label>
+        <label>Big blind
+          <input name="big_blind" type="number" min="2" value="20" />
+        </label>
+        <label>Difficulty
+          <select name="difficulty">
+            <option value="easy">Easy</option>
+            <option value="normal" selected>Normal</option>
+            <option value="hard">Hard</option>
+            <option value="expert">Expert</option>
+          </select>
+        </label>
+        <label id="sim-f-ante" class="inline"><input type="checkbox" name="ante" /> Enable ante</label>
+        <label id="sim-f-short" class="inline"><input type="checkbox" name="short_deck" /> Short deck</label>
+        <button type="submit">Run simulation</button>
+      </form>
+    </div>
+
+    <div id="sim-run" class="hidden">
+      <div id="sim-progress-line"></div>
+      <div id="sim-bar"><div id="sim-bar-fill"></div></div>
+      <div id="sim-run-note" class="dim">The table may lag while a simulation runs.</div>
+      <button type="button" id="sim-cancel" class="chip-btn">Cancel</button>
+    </div>
+
+    <div id="sim-results"></div>
   </section>
 
   <!-- ── Stats modal ──────────────────────────────────────────────────────── -->
