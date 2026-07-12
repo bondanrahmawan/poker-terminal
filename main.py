@@ -1,6 +1,5 @@
 import os
 import sys
-import time
 import math
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
@@ -8,14 +7,9 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
 from core.game import Game
 from players.terminal import TerminalPlayer
 from players.roster import create_bots, MAX_BOTS
-from players.bot import BotPlayer
 from strategies.difficulty import EASY, NORMAL, HARD
-from strategies.profile import StyleProfile
-from strategies.engine import DesignedBotStrategy
-from strategies.engine import (
-    TightPassiveStrategy, TightAggressiveStrategy,
-    LoosePassiveStrategy, LooseAggressiveStrategy,
-    BalancedStrategy, NitStrategy, ManiacStrategy, TrapperStrategy,
+from core.benchmark import (
+    run_all_vs_all, run_h2h, run_param_sweep, _BENCHMARK_STRATEGIES,
 )
 from core.stats_persistent import PersistentStatsManager
 from core.simulation_stats import SimulationStatsManager
@@ -27,18 +21,6 @@ _GREEN  = '\033[92m'
 _RED    = '\033[91m'
 _BOLD   = '\033[1m'
 _YELLOW = '\033[93m'
-
-# One representative bot per strategy archetype — used in benchmark mode
-_BENCHMARK_STRATEGIES = [
-    ("TightAggressive", TightAggressiveStrategy),
-    ("TightPassive",    TightPassiveStrategy),
-    ("LooseAggressive", LooseAggressiveStrategy),
-    ("LoosePassive",    LoosePassiveStrategy),
-    ("Balanced",        BalancedStrategy),
-    ("Nit",             NitStrategy),
-    ("Maniac",          ManiacStrategy),
-    ("Trapper",         TrapperStrategy),
-]
 
 # Per-strategy explanations for the insight section
 _STRATEGY_NOTES = {
@@ -414,83 +396,21 @@ def _run_strategy_benchmark() -> None:
     print(f"  Difficulty : {diff_label}  |  Ante: {'Yes' if enable_ante else 'No'}"
           f"  |  Short deck: {'Yes' if short_deck else 'No'}")
 
-    agg = {name: {'total_net': 0, 'hands_won': 0, 'hands_played': 0,
-                  'total_rebuys': 0, 'tables_won': 0}
-           for name in strat_names}
+    def _progress(done, total):
+        pct = done / total * 100
+        print(f"\r  Simulating... {done}/{total} tables ({pct:.0f}%)", end='', flush=True)
 
-    per_table_nets = {name: [] for name in strat_names}
-    street_totals = {name: {'preflop': 0, 'flop': 0, 'turn': 0, 'river': 0} for name in strat_names}
-    street_hands = {name: {'preflop': 0, 'flop': 0, 'turn': 0, 'river': 0} for name in strat_names}
-    convergence_snapshots = []
-    check_at = set()
-    if num_tables >= 8:
-        check_at = {num_tables // 4, num_tables // 2, 3 * num_tables // 4}
+    r = run_all_vs_all(num_tables, hands_per_table, starting_chips, big_blind,
+                       difficulty, enable_ante, short_deck, progress=_progress)
+    print(f"\r  Simulating... {num_tables}/{num_tables} tables (100%) -- done ({r['elapsed']:.1f}s)")
 
-    t_start    = time.time()
-    report_every = max(1, num_tables // 10)
-
-    for table_num in range(num_tables):
-        if (table_num + 1) % report_every == 0 or table_num == 0:
-            pct = (table_num + 1) / num_tables * 100
-            print(f"\r  Simulating... {table_num + 1}/{num_tables} tables ({pct:.0f}%)", end='', flush=True)
-        g = Game(
-            big_blind=big_blind,
-            hands_per_level=9999,
-            ante=enable_ante,
-            live_output=False,
-            game_mode='cash',
-            short_deck=short_deck,
-        )
-
-        pid_to_strat: dict = {}
-        for i, (sname, strategy_cls) in enumerate(_BENCHMARK_STRATEGIES):
-            pid = f"b{i}"
-            g.add_player(BotPlayer(pid, sname[:12], starting_chips, strategy_cls(difficulty)))
-            pid_to_strat[pid] = sname
-
-        for _ in range(hands_per_table):
-            g.start_game()
-            for p in g.players:
-                pid = p.player_id
-                sname = pid_to_strat[pid]
-                if pid in g.street_investments:
-                    for street, amt in g.street_investments[pid].items():
-                        street_totals[sname][street] += amt
-                        if amt > 0:
-                            street_hands[sname][street] += 1
-                if p.chips == 0:
-                    p.chips = starting_chips
-                    g.stats[p.player_id]['total_invested'] += starting_chips
-                    g.stats[p.player_id]['rebuys'] += 1
-
-        chip_leader = max(g.players, key=lambda p: p.chips)
-
-        for p in g.players:
-            sname = pid_to_strat[p.player_id]
-            s     = g.stats[p.player_id]
-            net   = p.chips - s['total_invested']
-            agg[sname]['total_net']    += net
-            agg[sname]['hands_won']    += s['hands_won']
-            agg[sname]['hands_played'] += s['hands_played']
-            agg[sname]['total_rebuys'] += s.get('rebuys', 0)
-            per_table_nets[sname].append(net)
-            if p is chip_leader:
-                agg[sname]['tables_won'] += 1
-
-        if (table_num + 1) in check_at:
-            snapshot = sorted(strat_names, key=lambda n: sum(per_table_nets[n]), reverse=True)
-            convergence_snapshots.append((table_num + 1, snapshot[:3]))
-
-    elapsed = time.time() - t_start
-    print(f"\r  Simulating... {num_tables}/{num_tables} tables (100%) -- done ({elapsed:.1f}s)")
-
-    ranked = sorted(agg.items(), key=lambda x: x[1]['total_net'], reverse=True)
+    ranked = r['ranked']
     _print_benchmark_results(ranked, num_tables, hands_per_table, starting_chips, big_blind,
-                             per_table_nets, convergence_snapshots, difficulty, enable_ante, short_deck,
-                             street_totals, street_hands)
+                             r['per_table_nets'], r['convergence_snapshots'], difficulty, enable_ante, short_deck,
+                             r['street_totals'], r['street_hands'])
     SimulationStatsManager().save_all_vs_all(
         num_tables, hands_per_table, starting_chips, big_blind,
-        difficulty, enable_ante, short_deck, ranked, per_table_nets,
+        difficulty, enable_ante, short_deck, ranked, r['per_table_nets'],
     )
     print(f"  {_DIM}Simulation stats saved.{_RESET}")
 
@@ -517,59 +437,16 @@ def _run_h2h_benchmark() -> None:
 
     print(f"\n  {n_matchups} matchups x {num_tables} tables = {total_tables:,} total tables")
 
-    wins = [[0] * n_strats for _ in range(n_strats)]
-    net_matrix = [[0.0] * n_strats for _ in range(n_strats)]
+    def _progress(done, total):
+        pct = done / total * 100
+        print(f"\r  Simulating... {done}/{total} matchups ({pct:.0f}%)", end='', flush=True)
 
-    t_start = time.time()
-    matchup_count = 0
+    r = run_h2h(num_tables, hands_per_table, starting_chips, big_blind,
+                difficulty, progress=_progress)
+    print(f"\r  Simulating... {n_matchups}/{n_matchups} matchups (100%) -- done ({r['elapsed']:.1f}s)")
 
-    for i in range(n_strats):
-        for j in range(i + 1, n_strats):
-            _, cls_a = _BENCHMARK_STRATEGIES[i]
-            _, cls_b = _BENCHMARK_STRATEGIES[j]
-
-            a_wins = 0
-            a_total_net = 0
-
-            for _ in range(num_tables):
-                g = Game(
-                    big_blind=big_blind,
-                    hands_per_level=9999,
-                    ante=False,
-                    live_output=False,
-                    game_mode='cash',
-                )
-
-                g.add_player(BotPlayer("a", strat_names[i][:12], starting_chips, cls_a(difficulty)))
-                g.add_player(BotPlayer("b", strat_names[j][:12], starting_chips, cls_b(difficulty)))
-
-                for _ in range(hands_per_table):
-                    g.start_game()
-                    for p in g.players:
-                        if p.chips == 0:
-                            p.chips = starting_chips
-                            g.stats[p.player_id]['total_invested'] += starting_chips
-                            g.stats[p.player_id]['rebuys'] += 1
-
-                pa = next(p for p in g.players if p.player_id == "a")
-                pb = next(p for p in g.players if p.player_id == "b")
-                net_a = pa.chips - g.stats["a"]['total_invested']
-                a_total_net += net_a
-                if pa.chips > pb.chips:
-                    a_wins += 1
-
-            wins[i][j] = a_wins
-            wins[j][i] = num_tables - a_wins
-            net_matrix[i][j] = a_total_net / num_tables
-            net_matrix[j][i] = -a_total_net / num_tables
-
-            matchup_count += 1
-            pct = matchup_count / n_matchups * 100
-            print(f"\r  Simulating... {matchup_count}/{n_matchups} matchups ({pct:.0f}%)", end='', flush=True)
-
-    elapsed = time.time() - t_start
-    print(f"\r  Simulating... {n_matchups}/{n_matchups} matchups (100%) -- done ({elapsed:.1f}s)")
-
+    wins = r['wins']
+    net_matrix = r['net_matrix']
     _print_h2h_matrix(strat_names, wins, net_matrix, num_tables)
     SimulationStatsManager().save_h2h(
         num_tables, hands_per_table, starting_chips, big_blind,
@@ -729,56 +606,15 @@ def _run_parameter_sweep() -> None:
     print(f"\n  Sweeping {param_name}: {steps[0]} to {steps[-1]} ({len(steps)} points)")
     print(f"  {len(steps)} x {num_tables} tables x {hands_per_table} hands = {len(steps) * num_tables * hands_per_table:,} total hands")
 
-    results = []  # list of (param_value, avg_net, std_dev)
-    t_start = time.time()
+    def _progress(done, total):
+        value = steps[done - 1]
+        print(f"\r  Simulating... {param_name}={value:.1f} [{done}/{total}]", end='', flush=True)
 
-    for step_idx, value in enumerate(steps):
-        print(f"\r  Simulating... {param_name}={value:.1f} [{step_idx + 1}/{len(steps)}]", end='', flush=True)
-        profile_args = dict(base_profile)
-        profile_args[param_name] = value
-        sweep_profile = StyleProfile(name=f'sweep_{value}', **profile_args)
-
-        nets = []
-        for _ in range(num_tables):
-            g = Game(
-                big_blind=big_blind,
-                hands_per_level=9999,
-                ante=False,
-                live_output=False,
-                game_mode='cash',
-            )
-
-            # Add the sweep bot
-            sweep_strategy = DesignedBotStrategy(sweep_profile, difficulty)
-            g.add_player(BotPlayer("sweep", "Sweep", starting_chips, sweep_strategy))
-
-            # Add standard opponents (use a few diverse strategies)
-            opponents = [
-                ("TightAggressive", TightAggressiveStrategy),
-                ("LoosePassive",    LoosePassiveStrategy),
-                ("Balanced",        BalancedStrategy),
-            ]
-            for i, (oname, ocls) in enumerate(opponents):
-                g.add_player(BotPlayer(f"opp{i}", oname[:12], starting_chips, ocls(difficulty)))
-
-            for _ in range(hands_per_table):
-                g.start_game()
-                for p in g.players:
-                    if p.chips == 0:
-                        p.chips = starting_chips
-                        g.stats[p.player_id]['total_invested'] += starting_chips
-                        g.stats[p.player_id]['rebuys'] += 1
-
-            sweep_p = next(p for p in g.players if p.player_id == "sweep")
-            net = sweep_p.chips - g.stats["sweep"]['total_invested']
-            nets.append(net)
-
-        avg_net = sum(nets) / len(nets)
-        sd = (sum((x - avg_net)**2 for x in nets) / (len(nets) - 1)) ** 0.5 if len(nets) > 1 else 0
-        results.append((value, avg_net, sd))
-
-    elapsed = time.time() - t_start
-    print(f"\r  Simulating... done ({len(steps)} points, {elapsed:.1f}s)          ")
+    r = run_param_sweep(param_name, steps, base_profile, num_tables,
+                        hands_per_table, starting_chips, big_blind, difficulty,
+                        progress=_progress)
+    results = r['results']
+    print(f"\r  Simulating... done ({len(steps)} points, {r['elapsed']:.1f}s)          ")
 
     _print_parameter_sweep(param_name, results, num_tables, hands_per_table, starting_chips, big_blind)
     SimulationStatsManager().save_param_sweep(
