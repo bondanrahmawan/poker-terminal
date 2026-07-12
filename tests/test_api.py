@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.server import app
+from api.sessions import SessionManager, CapacityError
 
 client = TestClient(app)
 
@@ -153,6 +154,14 @@ def _h1(view):
     return next(p for p in view["players"] if p["player_id"] == "h1")
 
 
+def test_session_manager_caps_concurrent_sessions():
+    mgr = SessionManager(max_sessions=2)
+    mgr.create(SETTINGS)
+    mgr.create(SETTINGS)
+    with pytest.raises(CapacityError):
+        mgr.create(SETTINGS)
+
+
 def test_topup_before_hand_doubles_chips_and_invested():
     game_id = _create()["game_id"]
     r = client.post(f"/games/{game_id}/topup")
@@ -160,7 +169,10 @@ def test_topup_before_hand_doubles_chips_and_invested():
     assert _h1(r.json()["view"])["chips"] == 2 * SETTINGS["starting_chips"]
     stats = client.get(f"/games/{game_id}/stats").json()["stats"]["h1"]
     assert stats["total_invested"] == 2 * SETTINGS["starting_chips"]
-    assert stats["rebuys"] == 1
+    # A top-up counts as invested money but is NOT a rebuy (which means busting
+    # and buying back in) — they are tracked separately.
+    assert stats["topups"] == 1
+    assert stats["rebuys"] == 0
 
 
 def test_topup_mid_hand_returns_409_chips_unchanged():

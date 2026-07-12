@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, Response
 from core.errors import IllegalActionError
 from api.schemas import CreateGameRequest, StartHandRequest, ActionRequestBody
 from api.sessions import (
-    SessionManager, GameSession,
+    SessionManager, GameSession, CapacityError,
     BustedError, GameOverError, HandInProgressError,
 )
 
@@ -49,7 +49,10 @@ def create_app() -> FastAPI:
 
     @app.post("/games", status_code=201)
     async def create_game(body: CreateGameRequest):
-        session = manager.create(body.model_dump())
+        try:
+            session = manager.create(body.model_dump())
+        except CapacityError:
+            raise HTTPException(status_code=503, detail="Server at capacity")
         return {"game_id": session.session_id, "view": session.view()}
 
     @app.post("/games/{game_id}/hands")

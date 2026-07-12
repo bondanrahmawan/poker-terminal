@@ -35,6 +35,7 @@ class StatsTracker:
             'best_hand_name': '-',
             'bust_hand': None,
             'rebuys': 0,
+            'topups': 0,                      # Voluntary between-hand add-ons (not busts)
             'starting_chips': player.chips,  # Original buy-in (never changes)
             'total_invested': player.chips,   # Tracks all rebuys + starting
             'cumulative_net': 0,              # Accumulated net across session resets

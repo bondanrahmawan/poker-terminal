@@ -158,7 +158,7 @@ button:disabled { background: #3a5a42; cursor: default; }
 #stats-body thead th { border-bottom: 1px solid #26402c; opacity: 0.8; }
 #stats-body .pos { color: #7fd68f; }
 #stats-body .neg { color: #e08585; }
-#stats-btn { flex-shrink: 0; font-size: 0.85rem; padding: 0.3rem 0.7rem; }
+#stats-btn, #quit-btn { flex-shrink: 0; font-size: 0.85rem; padding: 0.3rem 0.7rem; }
 
 /* ── Simple display mode ──────────────────────────────────────────────────────
    CSS-only: drop the felt ellipse and absolute positioning; inline left/top are

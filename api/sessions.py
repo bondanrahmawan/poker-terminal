@@ -116,23 +116,36 @@ class GameSession:
         human = self._human()
         amount = self.settings["starting_chips"]
         human.chips += amount
+        # Counts as invested money (so net stays honest) but is NOT a rebuy —
+        # rebuys mean "busted and bought back in", which top-ups are not.
         self.game.stats[human.player_id]["total_invested"] += amount
-        self.game.stats[human.player_id]["rebuys"] += 1
+        self.game.stats[human.player_id]["topups"] += 1
 
     def submit(self, action_str: str, amount: int = 0) -> None:
         action = PlayerAction(action_str)   # ValueError on unknown action string
         self.game.submit_action(HUMAN_ID, action, amount)
 
 
+class CapacityError(Exception):
+    """The server is holding the maximum number of concurrent sessions."""
+
+
 class SessionManager:
     """In-memory registry of GameSessions with an idle-TTL sweep."""
 
-    def __init__(self, ttl_seconds: int = 2 * 3600):
+    def __init__(self, ttl_seconds: int = 2 * 3600, max_sessions: int = 100):
         self._sessions = {}
         self._ttl = ttl_seconds
+        self._max = max_sessions
         self._lock = threading.Lock()
 
     def create(self, settings: dict) -> GameSession:
+        # Bound memory: since the launcher can expose this publicly, refuse to let
+        # unbounded /games calls spin up unlimited in-memory games.
+        self._sweep()
+        with self._lock:
+            if len(self._sessions) >= self._max:
+                raise CapacityError()
         sid = uuid.uuid4().hex
         session = GameSession(sid, settings)
         with self._lock:

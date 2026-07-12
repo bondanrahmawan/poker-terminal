@@ -253,8 +253,7 @@ async function pump() {
   while (S.queue.length) {
     const ev = S.queue.shift();
     S.lastSeq = ev.seq;
-    appendHistory(ev);                        // every event, always (also tracks winnings)
-    const line = eventText(ev);
+    const line = appendHistory(ev);           // every event (tracks winnings, returns caption line)
     if (line) showCaption(ev, line);          // banner + seat highlight
     // No caption → nothing to read → no dwell (kills hand-start dead air).
     await sleep(S.skip || !line ? 0 : dwellFor(ev));
@@ -353,7 +352,7 @@ function handEndSummary() {
 function appendHistory(ev) {
   trackEvent(ev);
   const line = eventText(ev);
-  if (line === null) return; // skip nulls (seating, own hole cards, preflop)
+  if (line === null) return null; // skip nulls (seating, own hole cards, preflop)
   const box = el("history");
   const div = document.createElement("div");
   div.className = ev.type === "hand_started" ? "h-line h-hand" : "h-line";
@@ -361,6 +360,7 @@ function appendHistory(ev) {
   box.appendChild(div);
   while (box.childElementCount > 300) box.removeChild(box.firstChild); // cap
   box.scrollTop = box.scrollHeight;
+  return line; // reused by pump() for the caption (avoids a second eventText call)
 }
 
 // Populate the log without animating (table entry / reconnect) and advance the
@@ -400,6 +400,7 @@ async function showStats() {
       net: p.chips - (s.total_invested || 0),
       best: s.best_hand_name && s.best_hand_name !== "-" ? s.best_hand_name : "—",
       rebuys: s.rebuys || 0,
+      topups: s.topups || 0,
     };
   }).sort((a, b) => b.net - a.net);
 
@@ -407,13 +408,13 @@ async function showStats() {
     `Session stats · ${data.hand_count} hand${data.hand_count === 1 ? "" : "s"}`;
   el("stats-body").innerHTML =
     `<table><thead><tr><th>Player</th><th>Hands</th><th>Won</th><th>Win%</th>` +
-    `<th>Net</th><th>Best hand</th><th>Rebuys</th></tr></thead><tbody>` +
+    `<th>Net</th><th>Best hand</th><th>Rebuys</th><th>Top-ups</th></tr></thead><tbody>` +
     rows.map((r) => {
       const wr = r.played ? ((r.won / r.played) * 100).toFixed(1) : "0.0";
       const net = (r.net >= 0 ? "+" : "") + r.net;
       return `<tr><td>${esc(r.name)}</td><td>${r.played}</td><td>${r.won}</td>` +
         `<td>${wr}%</td><td class="${r.net >= 0 ? "pos" : "neg"}">${net}</td>` +
-        `<td>${esc(r.best)}</td><td>${r.rebuys}</td></tr>`;
+        `<td>${esc(r.best)}</td><td>${r.rebuys}</td><td>${r.topups}</td></tr>`;
     }).join("") +
     `</tbody></table>`;
   el("stats-modal").classList.remove("hidden");
@@ -467,7 +468,10 @@ el("settings-form").addEventListener("submit", async (e) => {
   };
   const res = await postJSON("/games", settings);
   if (!res.ok) {
-    setStatus(`Create failed: ${res.status}`);
+    // #ws-status lives in the (hidden) table screen, so alert here instead.
+    alert(res.status === 503
+      ? "The server is at capacity right now — try again shortly."
+      : `Could not create game (error ${res.status}).`);
     return;
   }
   const data = await res.json();
@@ -550,7 +554,7 @@ function renderSeats(v) {
     div.style.left = x + "%";
     div.style.top = y + "%";
     div.innerHTML =
-      `<div class="name">${p.name} ${badges.join(" ")}</div>` +
+      `<div class="name">${esc(p.name)} ${badges.join(" ")}</div>` +
       (p.style ? `<div class="style">${esc(p.style)}</div>` : "") +
       `<div class="chips">${p.chips}</div>` +
       `<div class="bet">${p.bet_this_round ? "bet " + p.bet_this_round : ""}</div>`;
@@ -686,6 +690,11 @@ function setStatus(text) {
 // Skip affordance: click the felt (or leave the tab) to fast-forward the queue.
 el("felt").addEventListener("click", () => { if (S.animating) S.skip = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden && S.animating) S.skip = true; });
+
+// Quit the table at any point → back to settings (clears the session).
+el("quit-btn").addEventListener("click", () => {
+  if (confirm("Leave this table and start a new game?")) newGame();
+});
 
 // Stats modal wiring: button, ✕, backdrop click.
 el("stats-btn").addEventListener("click", showStats);
