@@ -37,15 +37,16 @@ class MistakeProfile:
     score_noise: float      # ± points on the 0-100 preflop score
     equity_noise: float     # ± on postflop equity
     odds_noise: float       # ± on pot odds
+    push_fold_skill: float  # 1.0 = follows push/fold charts exactly; 0.0 = doesn't know them
 
 
 MISTAKE_PROFILES: Dict[str, MistakeProfile] = {
-    'very_easy': MistakeProfile('very_easy', 0.15, 0.10, 'always',   False, -1, 'random',         15, 0.12, 0.08),
-    'easy':      MistakeProfile('easy',      0.10, 0.05, 'any_outs', False, -1, 'random',         10, 0.08, 0.05),
-    'normal':    MistakeProfile('normal',    0.04, 0.02, 'sloppy',   True,  -1, 'texture',          6, 0.05, 0.03),
-    'hard':      MistakeProfile('hard',      0.0,  0.0,  'correct',  True,  10, 'texture',          3, 0.03, 0.02),
-    'expert':    MistakeProfile('expert',    0.0,  0.0,  'correct',  True,   5, 'texture_image',    1, 0.01, 0.01),
-    'perfect':   MistakeProfile('perfect',   0.0,  0.0,  'correct',  True,   3, 'texture_image',    0, 0.0,  0.0),
+    'very_easy': MistakeProfile('very_easy', 0.15, 0.10, 'always',   False, -1, 'random',         15, 0.12, 0.08, 0.2),
+    'easy':      MistakeProfile('easy',      0.10, 0.05, 'any_outs', False, -1, 'random',         10, 0.08, 0.05, 0.4),
+    'normal':    MistakeProfile('normal',    0.04, 0.02, 'sloppy',   True,  -1, 'texture',          6, 0.05, 0.03, 0.7),
+    'hard':      MistakeProfile('hard',      0.0,  0.0,  'correct',  True,  10, 'texture',          3, 0.03, 0.02, 0.95),
+    'expert':    MistakeProfile('expert',    0.0,  0.0,  'correct',  True,   5, 'texture_image',    1, 0.01, 0.01, 1.0),
+    'perfect':   MistakeProfile('perfect',   0.0,  0.0,  'correct',  True,   3, 'texture_image',    0, 0.0,  0.0, 1.0),
 }
 
 

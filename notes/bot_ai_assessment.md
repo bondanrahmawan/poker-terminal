@@ -528,6 +528,94 @@ Considered, with a recommendation. None of these should start before Phase 1
 Suggested sequencing if a variant is wanted: **Phase 1 → Phase 2 → B (push/fold)
 → Phase 4 → A (range exploiter)**, with Phase 3 slotted anywhere for feel.
 
+### 2026-07-13 — Variant B implemented
+
+Implemented per `notes/bot_variant_b_pushfold.md` (Tasks 1-8). Summary:
+
+- New `strategies/push_fold.py`: a combo-weighted `score_cutoff_for_fraction`
+  table built from `score_starting_hand`, plus the spec's jam chart
+  (`_JAM_FRACTIONS`, stack bands 5/8/12/15bb × UTG/MP/CO/BTN/SB) and call
+  chart (`_CALL_FRACTIONS`, same bands × heads-up/players-behind, with a
+  ≥2-all-ins override to a flat 0.05). `jam_fraction`/`call_fraction` apply
+  the style-aggression tint (`0.9 + 0.2 * aggression`) and the
+  `push_fold_skill` jam-tightening/call-widening from Task 3.
+- `MistakeProfile.push_fold_skill`: very_easy 0.2, easy 0.4, normal 0.7,
+  hard 0.95, expert 1.0, perfect 1.0 — "does this bot know jam-or-fold
+  charts exist" as its own difficulty axis, separate from noise/bias.
+- Engine hook (`strategies/engine.py:_decide_preflop`) inserted right after
+  `_record_opponent_actions`/`unopened`, gated by `use_charts = random() <
+  push_fold_skill`: (a) facing a preflop all-in always runs a chart call/fold
+  decision if charts are "known" this decision, regardless of the bot's own
+  stack depth; (b) own stack ≤15bb and charts known → jam-or-fold (or check
+  the free BB option) instead of the old range/score logic. `is_premium`
+  (raw score ≥90) short-circuits to call/jam *inside* those branches only —
+  it does not force `use_charts` on, so a beginner who "doesn't know the
+  charts" can still limp/call AA off a short stack sometimes, per spec.
+- Deleted the `des >= 0.7` desperation shove block and the
+  `desperation_factor`/`adjust_for_desperation` imports from `engine.py`
+  (the functions themselves and their tests in `dynamic_behavior.py` /
+  `test_enhanced_strategies.py` are untouched, per the spec's "out of
+  scope" list).
+- **`players_behind` computation**: used the spec's approximate fallback
+  rather than seat-order derivation — `max(0, num_active - 2 -
+  len(self._preflop_actors))`, where `_preflop_actors` is a per-hand set of
+  opponent names (excluding self) seen acting on the preflop street via the
+  structured event log, reset on `hand_started`. Exact seat-order-from-`players_info`
+  was avoidable complexity: `players_info` is absolute table order, not
+  relative to the acting bot, and the spec explicitly allows this clamp as
+  "an acceptable approximation."
+- **Known simplification**: charts ignore the ante setting (per spec's
+  out-of-scope list) — an ante effectively shortens everyone's stack in bb
+  terms without changing pot geometry the same way a bigger blind would, so
+  ante tables will jam slightly tighter than a true ante-adjusted chart
+  would.
+- No deviations from the spec beyond the two notes above.
+
+**Verification gate (Task 8) results:**
+
+- `python -m pytest tests/ -q`: 353 passed (includes the new
+  `tests/test_push_fold.py`, 19 tests covering charts, event tracking,
+  the difficulty dial, the engine hook's jam/call rates, the BB option,
+  the AA-never-folds invariant, and the Task 6 regression tests).
+- Full difficulty ladder (`python -m tests.difficulty_ladder_check`, 48
+  tables × 150 hands per level, ~402s): monotone —
+  EASY −78,780 < NORMAL +29,371 < HARD +338,480 < EXPERT +502,556.
+  (Absolute numbers shifted from the pre-Variant-B baseline below, as
+  expected — short-stack hands now play differently — but the ordering and
+  the EASY↔EXPERT gap both held.)
+- All-vs-all rerun @ NORMAL (0.6), 32 tables × 150 hands:
+
+  | Archetype | Baseline (pre-Variant-B) | Post-Variant-B |
+  |---|---|---|
+  | TightPassive | +456k | **+681,356** |
+  | Nit | +117k | **+382,880** |
+  | TightAggressive | +654k | **+255,534** |
+  | Balanced | +221k | **+231,295** |
+  | Trapper | −21k | **+74,842** |
+  | LooseAggressive | −350k | **−457,720** |
+  | LoosePassive | −367k | **−558,150** |
+  | Maniac | −710k | **−610,037** |
+
+  Ordering stays poker-sane (tight/disciplined archetypes — TightPassive,
+  Nit, TightAggressive, Balanced — occupy the top half; Maniac,
+  LooseAggressive, LoosePassive the bottom), matching the spec's acceptance
+  bar. The individual rankings reshuffled (Nit and TightPassive jumped
+  above TightAggressive) because short-stack discipline now rewards tight
+  ranges more than raw aggression — an expected consequence of replacing
+  the old wide desperation shove with real jam/fold ranges, not a
+  regression.
+- Manual tournament check via `python run_web.py` (tournament mode, 300
+  starting chips / 20 big blind = 15bb start, so short-stack play begins
+  immediately): at Expert difficulty, `tight_aggressive` correctly jammed
+  all-in from the button at exactly 15bb into an unopened pot, and both
+  other bots folded appropriately to the shove; the hand resolved cleanly
+  with no errors. At Easy difficulty, the same short-stack spot showed both
+  sides of the intended split: one hand a `balanced` bot in the small blind
+  jammed all-in per the chart, and the next hand a `balanced` bot on the
+  button at 16bb called a raise instead of jamming — the legacy
+  limp/call leak Easy is supposed to still exhibit per
+  `push_fold_skill=0.4`. No errors to hand completion in either table.
+
 ---
 
 ## 10. Open questions

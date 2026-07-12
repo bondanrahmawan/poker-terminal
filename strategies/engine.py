@@ -23,11 +23,11 @@ from strategies import (
     detect_draws, advanced_equity, monte_carlo_equity, DrawInfo,
     BetSize, choose_bet_size, choose_raise_size, stack_depth_label,
     should_slow_play, should_semi_bluff,
-    desperation_factor, adjust_for_desperation,
     hand_in_range, should_3bet, position_to_range, should_defend_bb,
 )
 from strategies.profile import StyleProfile, PROFILES
 from strategies.hand_score import score_starting_hand
+from strategies.push_fold import should_jam, should_call_jam
 from strategies.utils import pot_odds, calc_raise_amount
 from strategies.difficulty import mistakes_for
 
@@ -87,6 +87,8 @@ class DesignedBotStrategy(BotStrategy):
         self._big_blind = 20  # default; updated from game_state if available
         self._position  = 'MP'
         self._event_cursor = -1
+        self._preflop_all_ins: list = []  # [(name, amount), ...] this hand
+        self._preflop_actors: set = set()  # opponent names who acted preflop this hand
 
     # ── Public interface ─────────────────────────────────────────────────────
 
@@ -136,15 +138,30 @@ class DesignedBotStrategy(BotStrategy):
             if event.seq <= self._event_cursor:
                 continue
             self._event_cursor = event.seq
+            if event.type == 'hand_started':
+                self._preflop_all_ins = []
+                self._preflop_actors = set()
+                continue
             if event.type != 'action_taken':
                 continue
             data = event.data
             if data['player_id'] == self_id or data['name'] == self._bot_name:
                 continue
+            if data['street'] == 'preflop':
+                self._preflop_actors.add(data['name'])
+            if data.get('all_in') and data['street'] == 'preflop' and data['amount'] > 0:
+                self._preflop_all_ins.append((data['name'], data['amount']))
             action = data['action']
             if action == 'all-in':
                 action = 'raise'
             self.tracker.record_action(data['name'], action, data['street'])
+
+    def _facing_preflop_jam(self, big_blind: int) -> Tuple[int, float]:
+        """(num_all_ins, largest_jam_bb) from this hand's preflop all-ins."""
+        if not self._preflop_all_ins:
+            return 0, 0.0
+        largest = max(amount for _, amount in self._preflop_all_ins)
+        return len(self._preflop_all_ins), largest / max(1, big_blind)
 
     # ── Preflop ──────────────────────────────────────────────────────────────
 
@@ -174,6 +191,49 @@ class DesignedBotStrategy(BotStrategy):
         # No voluntary raise yet this street (BB's blind is not a "raise").
         unopened = current_bet <= big_blind
 
+        # Hand score with noise (needed by the push/fold hook below too)
+        score = self._noisy_score(score_starting_hand(*player.hole_cards))
+        raw_score = score_starting_hand(*player.hole_cards)
+        is_premium = raw_score >= 90  # AA, KK, AK always play regardless of range
+
+        # ── Push/fold short-stack mode (Variant B) ──────────────────────────
+        # Nash-style jam-or-fold charts replace normal preflop play below
+        # ~15bb, and calling off vs. a preflop all-in is always a chart
+        # decision regardless of our own stack depth.
+        stack_bb = player.chips / big_blind
+        skill = self.mistakes.push_fold_skill
+        use_charts = random.random() < skill
+
+        num_jams, jam_bb = self._facing_preflop_jam(big_blind)
+        if num_jams > 0 and min_call > 0 and use_charts:
+            players_behind = max(0, game_state.get('num_active', 2) - 2 - len(self._preflop_actors))
+            if is_premium or should_call_jam(
+                score, min(jam_bb, stack_bb), players_behind,
+                num_jams, widen=self.mistakes.overcall_bias,
+            ):
+                return self._make_call(player.chips, min_call)
+            self.image.record_preflop_fold()
+            return PlayerAction.FOLD, 0
+
+        if stack_bb <= 15 and use_charts:
+            if self._position == 'BB' and min_call == 0:
+                pass  # BB option: fall through to normal logic (check is free)
+            elif unopened:
+                if is_premium or should_jam(score, stack_bb, self._position, self.profile.aggression):
+                    self.image.record_raise()
+                    return PlayerAction.ALL_IN, player.chips
+                if min_call == 0:
+                    return PlayerAction.CHECK, 0
+                self.image.record_preflop_fold()
+                return PlayerAction.FOLD, 0
+            else:
+                # Facing a normal (non-all-in) raise while short: jam or fold.
+                if is_premium or should_call_jam(score, stack_bb, 0, 0):
+                    self.image.record_raise()
+                    return PlayerAction.ALL_IN, player.chips
+                self.image.record_preflop_fold()
+                return PlayerAction.FOLD, 0
+
         # Position-aware range — a difficulty feature: beginners play the
         # same hands from every seat.
         if self.mistakes.position_aware:
@@ -182,13 +242,7 @@ class DesignedBotStrategy(BotStrategy):
             range_label = 'medium'
         in_range = hand_in_range(*player.hole_cards, range_label)
 
-        # Hand score with noise
-        score = self._noisy_score(score_starting_hand(*player.hole_cards))
         threshold = int((1.0 - self.profile.play_range) * 100)
-
-        # Premium hands (AA, KK, AK) always play regardless of range
-        raw_score = score_starting_hand(*player.hole_cards)
-        is_premium = raw_score >= 90
 
         # ── Facing a raise (someone has voluntarily raised this street) ──
         if min_call > 0 and not unopened:
@@ -241,13 +295,6 @@ class DesignedBotStrategy(BotStrategy):
         eff_aggression = self.profile.aggression + exploit['aggression_boost']
         eff_aggression += self.tilt.tilt_aggression_boost
         eff_aggression = min(1.0, max(0.0, eff_aggression))
-
-        # Desperation (short stack)
-        des = desperation_factor(player.chips, self._big_blind)
-        if des >= 0.7 and score > 25:
-            # Shove wide range when desperate
-            self.image.record_raise()
-            return PlayerAction.ALL_IN, player.chips
 
         # Open raise
         if random.random() < eff_aggression:
