@@ -266,6 +266,17 @@ def test_invalid_game_mode_rejected():
     assert r.status_code == 422
 
 
+def test_expert_difficulty_creates_session_with_expert_bots():
+    r = client.post("/games", json=dict(SETTINGS, difficulty="expert"))
+    assert r.status_code == 201
+    game_id = r.json()["game_id"]
+    session = client.app.state.manager.get(game_id)
+    bots = [p for p in session.game.players if p.player_id != "h1"]
+    assert bots
+    for bot in bots:
+        assert bot.strategy.difficulty == pytest.approx(0.9)
+
+
 def test_cash_mode_no_blind_escalation():
     # hands_per_level=1 would escalate every hand in tournament mode; cash must not.
     settings = dict(SETTINGS, game_mode="cash", hands_per_level=1)

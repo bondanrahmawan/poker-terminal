@@ -29,6 +29,7 @@ from strategies import (
 from strategies.profile import StyleProfile, PROFILES
 from strategies.hand_score import score_starting_hand
 from strategies.utils import pot_odds, calc_raise_amount
+from strategies.difficulty import mistakes_for
 
 
 # ── Board texture helpers (kept from v1) ─────────────────────────────────────
@@ -77,6 +78,7 @@ class DesignedBotStrategy(BotStrategy):
     def __init__(self, profile: StyleProfile, difficulty: float = 0.6):
         self.profile    = profile
         self.difficulty = difficulty
+        self.mistakes   = mistakes_for(difficulty)
         # Dynamic state (persists across hands)
         self.tilt       = TiltState()
         self.image      = TableImage()
@@ -161,15 +163,23 @@ class DesignedBotStrategy(BotStrategy):
         # Record opponent actions
         self._record_opponent_actions(game_state)
 
-        # Get opponent IDs for exploitation
+        # Get opponent IDs for exploitation, gated by difficulty: below hard,
+        # bots never adapt to observed opponent tendencies.
         opponent_ids = _extract_opponent_ids(players_info, self._bot_name)
-        exploit = self.tracker.exploit_adjustment(opponent_ids)
+        n = self.mistakes.opp_model_min_hands
+        modeled_ids = [oid for oid in opponent_ids
+                       if n >= 0 and self.tracker.has_data(oid, n)]
+        exploit = self.tracker.exploit_adjustment(modeled_ids)
 
         # No voluntary raise yet this street (BB's blind is not a "raise").
         unopened = current_bet <= big_blind
 
-        # Position-aware range
-        range_label = position_to_range(self._position, is_opening=unopened)
+        # Position-aware range — a difficulty feature: beginners play the
+        # same hands from every seat.
+        if self.mistakes.position_aware:
+            range_label = position_to_range(self._position, is_opening=unopened)
+        else:
+            range_label = 'medium'
         in_range = hand_in_range(*player.hole_cards, range_label)
 
         # Hand score with noise
@@ -198,9 +208,18 @@ class DesignedBotStrategy(BotStrategy):
                 if should_defend_bb(*player.hole_cards, raise_size_rel, self.profile.aggression):
                     return self._make_call(player.chips, min_call)
 
-            # Default: fold if out of range, call if in range
+            # Default: fold if out of range, call if in range. Margin-scaled
+            # so a hand well inside the calling range isn't gated behind a
+            # low call_freq — that's a difficulty mistake, not a permanent
+            # personality tax (Phase 2 Task 3).
             if in_range or score >= threshold - 10 or is_premium:
-                if random.random() < self.profile.call_freq + exploit['equity_boost']:
+                score_margin = (raw_score - (threshold - 10)) / 100.0
+                p_call = self.profile.call_freq + exploit['equity_boost'] + score_margin * 1.5
+                if self.mistakes.overcall_bias == 0.0 and raw_score >= 80:
+                    p_call = max(p_call, 0.90)
+                if is_premium:
+                    p_call = 1.0
+                if random.random() < min(1.0, p_call):
                     return self._make_call(player.chips, min_call)
             self.image.record_preflop_fold()
             return PlayerAction.FOLD, 0
@@ -278,23 +297,33 @@ class DesignedBotStrategy(BotStrategy):
         # Record opponent actions
         self._record_opponent_actions(game_state)
 
-        # Opponent IDs and exploitation
+        # Opponent IDs and exploitation, gated by difficulty: below hard,
+        # bots never adapt to observed opponent tendencies.
         opponent_ids = _extract_opponent_ids(players_info, self._bot_name)
-        exploit = self.tracker.exploit_adjustment(opponent_ids)
-        fold_equity = self.tracker.opponent_fold_equity(opponent_ids)
+        n = self.mistakes.opp_model_min_hands
+        modeled_ids = [oid for oid in opponent_ids
+                       if n >= 0 and self.tracker.has_data(oid, n)]
+        exploit = self.tracker.exploit_adjustment(modeled_ids)
+        fold_equity = self.tracker.opponent_fold_equity(modeled_ids)
 
         # Advanced equity with draw detection
         draw = detect_draws(player.hole_cards, community)
         if self.difficulty >= 0.75 and len(community) >= 4:
-            mc_trials = int(50 * self.difficulty)
+            # A flat 200 trials (±3.5pp) rather than difficulty-scaled — 37
+            # trials at hard was ±8pp of pure noise, no more signal than none.
             raw_equity = monte_carlo_equity(
-                player.hole_cards, community, num_active - 1, mc_trials
+                player.hole_cards, community, num_active - 1, 200
             )
         else:
             raw_equity = advanced_equity(player.hole_cards, community, num_active - 1)
         equity = self._noisy_equity(raw_equity)
         equity += exploit['equity_boost']
         equity = min(1.0, max(0.0, equity))
+        # Overvalue bias: a beginner genuinely believes top pair (or any ace)
+        # is gold — this feeds every downstream use, including bet_equity.
+        holds_ace = any(c.rank == 14 for c in player.hole_cards)
+        if draw.hand_rank >= 2 or holds_ace:
+            equity = min(1.0, equity + self.mistakes.overvalue_bias)
         # Fold equity (opponents folding to *our* bet) only applies when we're
         # betting/raising — it must not rescue a bad pot-odds call.
         bet_equity = min(1.0, equity + fold_equity)
@@ -315,14 +344,12 @@ class DesignedBotStrategy(BotStrategy):
         eff_bluff -= exploit['caution_penalty']
         eff_bluff = min(1.0, max(0.0, eff_bluff))
 
-        # Opponent tendencies
+        # Opponent tendencies (modeled_ids only — gated by difficulty above)
         opp_folds_often = any(
-            self.tracker.get_stats(oid).fold_to_bet > 0.5 for oid in opponent_ids
-            if self.tracker.has_data(oid, 3)
+            self.tracker.get_stats(oid).fold_to_bet > 0.5 for oid in modeled_ids
         )
         opp_calls_often = any(
-            self.tracker.get_stats(oid).vpip > 0.5 for oid in opponent_ids
-            if self.tracker.has_data(oid, 3)
+            self.tracker.get_stats(oid).vpip > 0.5 for oid in modeled_ids
         )
 
         # ── Check for slow-play ──
@@ -384,15 +411,36 @@ class DesignedBotStrategy(BotStrategy):
                     self.image.record_raise()
                     return self._action_raise_or_all_in(amt, player.chips)
 
-            # Call with equity
-            if equity > odds + exploit['caution_penalty']:
-                call_freq = self.profile.call_freq + exploit['equity_boost']
-                if random.random() < call_freq:
+            # Call with equity — margin-scaled so a clearly profitable call
+            # isn't gated behind a low call_freq (that's a difficulty
+            # mistake, not a permanent personality tax; Phase 2 Task 3).
+            # Overcall bias applies only to this comparison, never to
+            # bet_equity or the value-bet thresholds above (Task 4).
+            margin = (equity + self.mistakes.overcall_bias) - (odds + exploit['caution_penalty'])
+            if margin > 0:
+                p_call = self.profile.call_freq + exploit['equity_boost'] + margin * 3.0
+                if self.mistakes.overcall_bias == 0.0 and margin >= 0.10:
+                    p_call = max(p_call, 0.90)      # hard+ never folds clearly winning hands
+                if random.random() < min(1.0, p_call):
                     return self._make_call(player.chips, min_call)
 
             # Bluff catch with very weak hands (rare)
             if equity < 0.20 and opp_calls_often and random.random() < 0.1:
                 return self._make_call(player.chips, min_call)
+
+            # Draw chasing: a beginner calls draws it shouldn't, by mode.
+            # Cap: a bet >= half the stack gives even a beginner pause,
+            # except at 'always' (very_easy chases anything).
+            if is_draw and min_call > 0:
+                mode = self.mistakes.chase_draws
+                if mode == 'always':
+                    return self._make_call(player.chips, min_call)
+                if min_call < player.chips // 2:
+                    if mode == 'any_outs' and draw.total_outs >= 4:
+                        return self._make_call(player.chips, min_call)
+                    if mode == 'sloppy' and equity + 0.10 > odds:
+                        return self._make_call(player.chips, min_call)
+                    # 'correct': fall through to fold
 
             return PlayerAction.FOLD, 0
 
@@ -456,37 +504,39 @@ class DesignedBotStrategy(BotStrategy):
         # Don't bluff with made hands that can win at showdown
         if equity >= 0.40:
             return False
-        # At low difficulty, bluff randomly
-        if self.difficulty < 0.4:
+        # Low levels bluff randomly, with no board/opponent read at all.
+        if self.mistakes.bluff_mode == 'random':
             return random.random() < 0.3
-        # Higher difficulty: bluff when board is scary and opponents are weak
+        # 'texture' and 'texture_image': bluff when board is scary and
+        # opponents are weak, or when opponents fold often.
         board_scary = _is_board_scary(community)
         opponent_weak = _is_opponent_weak(hand_log)
-        if board_scary and opponent_weak:
-            return True
-        # Also bluff when opponents fold often
-        if opp_folds_often and equity < 0.25:
-            return True
-        return False
+        would_bluff = (board_scary and opponent_weak) or (opp_folds_often and equity < 0.25)
+        if not would_bluff:
+            return False
+        if self.mistakes.bluff_mode == 'texture_image':
+            # A tight image gets away with more bluffs; a loose one, fewer.
+            return random.random() < min(1.0, 0.5 + self.image.bluff_success_rate)
+        return True
 
     # ── Difficulty noise ─────────────────────────────────────────────────────
 
     def _noisy_score(self, score: int) -> int:
-        if self.difficulty >= 1.0:
+        noise = self.mistakes.score_noise
+        if noise == 0.0:
             return score
-        noise = (1.0 - self.difficulty) * 30
         return max(0, min(100, int(score + random.uniform(-noise, noise))))
 
     def _noisy_equity(self, equity: float) -> float:
-        if self.difficulty >= 1.0:
+        noise = self.mistakes.equity_noise
+        if noise == 0.0:
             return equity
-        noise = (1.0 - self.difficulty) * 0.25
         return max(0.0, min(1.0, equity + random.uniform(-noise, noise)))
 
     def _noisy_odds(self, odds: float) -> float:
-        if self.difficulty >= 1.0:
+        noise = self.mistakes.odds_noise
+        if noise == 0.0:
             return odds
-        noise = (1.0 - self.difficulty) * 0.15
         return max(0.0, min(1.0, odds + random.uniform(-noise, noise)))
 
     # ── Action helpers ───────────────────────────────────────────────────────

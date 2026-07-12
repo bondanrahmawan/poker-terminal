@@ -411,6 +411,79 @@ plus optionally expose expert in the web settings). Reduce noise amplitudes.
 expert in all-vs-all; expected monotone net-chip ordering with clear gaps
 (this is currently *not* guaranteed by noise-only difficulty).
 
+**Phase 2 implemented 2026-07-12** — per `notes/bot_fix_phase2.md` (Tasks
+1–8), full test suite green (334 tests), difficulty ladder and archetype
+sanity rerun both pass, manual web games at Easy and Expert verified
+(Task 10). Deviations from this section's sketch and the spec:
+
+- **Bot_Frank (`players/roster.py`)**: changed to `TightAggressiveStrategy(max(d,
+  HARD))` exactly as the spec's Task 8 item 4 literally states, not
+  `max(d, HARD) if d >= NORMAL else d`. This means Frank now always plays at
+  *at least* HARD even at an Easy/Normal table, not only at Expert — a wider
+  behavior change than the "don't downgrade Frank at expert" problem
+  statement, but it's what the spec's replacement line says verbatim.
+- **Draw-chase cap wording (Task 4)**: implemented literally — the
+  half-stack cap on chasing is skipped *only* for `chase_draws == 'always'`
+  (very_easy), so a very-easy bot still chases a draw facing a bet of half
+  its stack or more, while every other mode respects the cap. The spec's own
+  parenthetical ("even beginners hesitate for half their stack") reads as if
+  it should apply to `'always'` too, but the preceding sentence explicitly
+  carves out `'always'` as the exception, so the literal instruction won.
+- **Difficulty-ladder acceptance check**: added as
+  `tests/difficulty_ladder_check.py` — a plain script (no `test_` prefix, so
+  pytest doesn't collect it), not a slow-marked pytest test, since this repo
+  has no marker infrastructure (no `pytest.ini`/`conftest.py`) and one full
+  run takes ~7 minutes (200-trial Monte Carlo equity at HARD/EXPERT on every
+  turn/river decision, 48 tables x 150 hands x 4 levels). Run manually with
+  `python tests/difficulty_ladder_check.py`.
+- **Persistent stats (Task 8 item 5)**: `core/stats_persistent.py` already
+  mapped an "Expert" label end to end (`_difficulty_to_label`/
+  `_label_to_difficulty`); no changes were needed there. The simulation
+  form's Expert `<option>` (`web/index.html`) also already existed — only
+  the new-game difficulty radio group and the stats-viewer difficulty filter
+  needed the addition.
+- **Unrelated flaky-test fix**: `test_integration_fold_to_bet_populated`
+  (added in Phase 1, `tests/test_enhanced_strategies.py`) relied on the old
+  call-gate bug to produce a postflop fold-to-bet with its fixed seed — once
+  Task 3 stopped mis-folding profitable calls, that exact 3-identical-Balanced-
+  bots/tournament-mode setup no longer reliably reached a genuine bad-odds
+  spot within a reasonable hand count (blind-reset tournaments also spend
+  long stretches heads-up-or-less between resets). Switched it to a
+  Maniac + Nit + Balanced mix in cash mode with rebuys, which reliably forces
+  real bad-odds folds — not a Phase 2 behavior change, just a test made
+  robust to one.
+
+**Benchmark results recorded 2026-07-12** (see baseline in the Task 10
+spec header, `notes/bot_fix_phase2.md`):
+
+Archetype sanity rerun — `run_all_vs_all(num_tables=32, hands_per_table=150,
+starting_chips=1000, big_blind=20, difficulty=0.6)`, elapsed 12.3s:
+
+```
+TightAggressive +446k | TightPassive +354k | Trapper +332k | Balanced +206k
+LooseAggressive +196k | Nit +184k | Maniac -843k | LoosePassive -875k
+```
+
+TightAggressive went from **-37k (baseline, bottom half)** to **+446k
+(top of the table)** — the Task 3 call-gate fix was the single biggest
+lever; TAG's raise-or-fold shape no longer burns its own made hands to a
+low `call_freq`. Maniac and LoosePassive losing big is correct poker, not a
+regression.
+
+Difficulty ladder — one `BalancedStrategy(level)` vs. three
+`BalancedStrategy(NORMAL)`, 48 tables x 150 hands per level, elapsed 424s:
+
+```
+EASY +34.7k | NORMAL +115.2k | HARD +389.1k | EXPERT +415.9k
+```
+
+Monotone as required, with a wide margin between the extremes (EASY to
+EXPERT is a ~381k swing on the same profile) — proof the mistake profiles
+cost/save real EV in the intended order.
+
+No `strategies/profile.py` values were tuned; the wide TightAggressive swing
+above is entirely a wiring/call-gate effect, not a personality-float change.
+
 ### Phase 3 — Style depth (feel, not strength)
 
 Extend `StyleProfile` with per-street parameters (all default to current

@@ -18,6 +18,7 @@ from strategies.engine import (
 )
 from strategies.profile import PROFILES
 from strategies.hand_score import score_starting_hand
+from strategies.difficulty import EXPERT
 
 # New modules
 from strategies.opponent_model import OpponentTracker, OpponentStats
@@ -727,18 +728,26 @@ class TestRecordOpponentActionsFromEvents:
         assert strategy.tracker.get_stats('Bot1').total_hands_seen == 0
 
     def test_integration_fold_to_bet_populated(self):
+        # Cash mode + rebuys so busting never starves later hands of action
+        # (a tournament/blind-reset table spends long stretches heads-up-or-less
+        # between resets, which starves this of postflop bet-facing spots).
+        # A Maniac forces genuine bad-odds spots for a Nit to fold into.
         import random
         from core.game import Game
         from players.bot import BotPlayer
-        from strategies.engine import BalancedStrategy as BS
+        from strategies.engine import BalancedStrategy, ManiacStrategy, NitStrategy
 
         random.seed(123)
-        game = Game(big_blind=20, seed=42, blind_reset_interval=20)
-        for i in range(3):
-            game.add_player(BotPlayer(f'p{i}', f'Bot{i}', 1000, BS(difficulty=1.0)))
+        game = Game(big_blind=20, seed=42, game_mode='cash')
+        game.add_player(BotPlayer('p0', 'Bot0', 5000, ManiacStrategy(difficulty=0.6)))
+        game.add_player(BotPlayer('p1', 'Bot1', 5000, NitStrategy(difficulty=0.6)))
+        game.add_player(BotPlayer('p2', 'Bot2', 5000, BalancedStrategy(difficulty=0.6)))
 
-        for _ in range(60):
+        for _ in range(100):
             game.start_game()
+            for p in game.players:
+                if p.chips == 0:
+                    p.chips = 5000
 
         found_fold_to_bet = False
         for p in game.players:
@@ -830,6 +839,48 @@ class TestPreflopOpeningRoutedByPosition:
         utg_rate = entry_rate('UTG')
         assert btn_rate >= 1.5 * utg_rate
 
+    def test_position_awareness_gated_by_difficulty(self):
+        """Phase 2 Task 5: position_aware is a difficulty feature — HARD sees
+        the BTN/UTG split, EASY (position_aware=False) flattens to 'medium'
+        for every seat."""
+        import random
+        from strategies.difficulty import EASY, HARD
+        big_blind = 20
+        gs_kwargs = dict(min_call=big_blind, min_raise=big_blind, pot_size=30,
+                          big_blind=big_blind, current_bet=big_blind)
+
+        ranks = sorted(Rank.get_all(), reverse=True)
+        canonical_hands = []
+        for i, r1 in enumerate(ranks):
+            for r2 in ranks[i:]:
+                if r1 == r2:
+                    canonical_hands.append((Card(r1, Suit.SPADES), Card(r2, Suit.HEARTS)))
+                else:
+                    canonical_hands.append((Card(r1, Suit.SPADES), Card(r2, Suit.HEARTS)))
+                    canonical_hands.append((Card(r1, Suit.SPADES), Card(r2, Suit.SPADES)))
+
+        def entry_rate(role, difficulty):
+            entries = 0
+            trials = 2000
+            for _ in range(trials):
+                strategy = BalancedStrategy(difficulty=difficulty)
+                hole = list(random.choice(canonical_hands))
+                gs = state(player_role=role, **gs_kwargs)
+                action, _ = strategy.decide(gs, make_view(hole_cards=hole))
+                if action != PlayerAction.FOLD:
+                    entries += 1
+            return entries / trials
+
+        random.seed(11)
+        hard_btn = entry_rate('BTN', HARD)
+        hard_utg = entry_rate('UTG', HARD)
+        assert hard_btn >= 1.5 * hard_utg
+
+        easy_btn = entry_rate('BTN', EASY)
+        easy_utg = entry_rate('UTG', EASY)
+        relative_diff = abs(easy_btn - easy_utg) / max(easy_btn, easy_utg)
+        assert relative_diff < 0.15
+
 
 # ---------------------------------------------------------------------------
 # Preflop folds recorded into TableImage (Task 4)
@@ -845,6 +896,122 @@ class TestPreflopFoldRecordedInImage:
         for _ in range(50):
             strategy.decide(gs, make_view(hole_cards=junk_hand))
         assert strategy.image.tightness > 0.7
+
+
+# ---------------------------------------------------------------------------
+# Opponent model gated by difficulty (Phase 2 Task 6)
+# ---------------------------------------------------------------------------
+
+class TestOpponentModelGatedByDifficulty:
+    def test_easy_never_adapts_even_with_data(self):
+        from strategies.difficulty import EASY
+        strategy = BalancedStrategy(difficulty=EASY)
+        for _ in range(50):
+            strategy.tracker.record_action('Opp', 'fold', 'preflop')
+
+        gs = state(min_call=50, pot_size=100,
+                   players_info=[('Bot1', 1000, True), ('Opp', 1000, True)],
+                   self_id='p_bot1', self_name='Bot1', num_active=2)
+        strategy.decide(gs, make_view(hole_cards=MEDIUM_HAND))
+
+        opponent_ids = _extract_opponent_ids(gs['players_info'], 'Bot1')
+        n = strategy.mistakes.opp_model_min_hands
+        modeled = [oid for oid in opponent_ids if n >= 0 and strategy.tracker.has_data(oid, n)]
+        assert modeled == []
+        assert strategy.tracker.exploit_adjustment(modeled) == {
+            'equity_boost': 0.0, 'aggression_boost': 0.0,
+            'bluff_boost': 0.0, 'caution_penalty': 0.0,
+        }
+
+    def test_expert_adapts_after_min_hands(self):
+        from strategies.difficulty import EXPERT
+        strategy = BalancedStrategy(difficulty=EXPERT)
+        for _ in range(6):
+            strategy.tracker.record_action('Opp', 'fold', 'preflop')
+
+        opponent_ids = ['Opp']
+        n = strategy.mistakes.opp_model_min_hands
+        assert n == 5
+        modeled = [oid for oid in opponent_ids if n >= 0 and strategy.tracker.has_data(oid, n)]
+        assert modeled == ['Opp']
+        adj = strategy.tracker.exploit_adjustment(modeled)
+        assert adj != {'equity_boost': 0.0, 'aggression_boost': 0.0,
+                       'bluff_boost': 0.0, 'caution_penalty': 0.0}
+
+
+# ---------------------------------------------------------------------------
+# Bluff mode and Monte-Carlo budget (Phase 2 Task 7)
+# ---------------------------------------------------------------------------
+
+class TestBluffModeByDifficulty:
+    NON_SCARY_BOARD = [Card(Rank.TWO, Suit.CLUBS), Card(Rank.NINE, Suit.HEARTS),
+                        Card(Rank.KING, Suit.DIAMONDS)]
+    ACTIVE_HAND_LOG = ['Bob raises 40 Pot: 80', 'Alice calls 40 Pot: 120']
+
+    def test_random_mode_bluffs_regardless_of_texture(self):
+        strategy = DesignedBotStrategy(PROFILES['maniac'], difficulty=0.2)  # very_easy
+        assert strategy.mistakes.bluff_mode == 'random'
+        count = sum(
+            1 for _ in range(300)
+            if strategy._should_bluff_v2(self.NON_SCARY_BOARD, self.ACTIVE_HAND_LOG,
+                                          0.10, 1.0, False)
+        )
+        assert count / 300 > 0.15  # ~30% random bluff rate
+
+    def test_texture_mode_does_not_bluff_a_calm_board(self):
+        strategy = DesignedBotStrategy(PROFILES['maniac'], difficulty=0.75)  # hard
+        assert strategy.mistakes.bluff_mode == 'texture'
+        count = sum(
+            1 for _ in range(300)
+            if strategy._should_bluff_v2(self.NON_SCARY_BOARD, self.ACTIVE_HAND_LOG,
+                                          0.10, 1.0, False)
+        )
+        assert count == 0
+
+    def test_texture_image_scales_by_table_image(self):
+        scary_board = [Card(Rank.TWO, Suit.CLUBS), Card(Rank.NINE, Suit.CLUBS),
+                        Card(Rank.KING, Suit.CLUBS)]
+        weak_hand_log = ['Bob checks Pot: 80']
+
+        tight = DesignedBotStrategy(PROFILES['maniac'], difficulty=EXPERT)
+        assert tight.mistakes.bluff_mode == 'texture_image'
+        tight.image.hands_played_tight = 10
+        tight.image.value_bets_won = 1  # activate the tightness-based formula
+        tight_rate = sum(
+            1 for _ in range(500)
+            if tight._should_bluff_v2(scary_board, weak_hand_log, 0.10, 1.0, False)
+        ) / 500
+
+        loose = DesignedBotStrategy(PROFILES['maniac'], difficulty=EXPERT)
+        loose.image.hands_played_loose = 10
+        loose.image.value_bets_won = 1
+        loose_rate = sum(
+            1 for _ in range(500)
+            if loose._should_bluff_v2(scary_board, weak_hand_log, 0.10, 1.0, False)
+        ) / 500
+
+        assert tight_rate > loose_rate
+
+    def test_monte_carlo_trials_are_flat_200(self):
+        import strategies.engine as eng
+        captured = {}
+        original = eng.monte_carlo_equity
+
+        def spy(hole, community, num_opponents, trials, *a, **kw):
+            captured['trials'] = trials
+            return original(hole, community, num_opponents, trials, *a, **kw)
+
+        eng.monte_carlo_equity = spy
+        try:
+            strategy = BalancedStrategy(difficulty=EXPERT)
+            board = [Card(Rank.TWO, Suit.CLUBS), Card(Rank.FIVE, Suit.DIAMONDS),
+                     Card(Rank.NINE, Suit.SPADES), Card(Rank.QUEEN, Suit.HEARTS)]
+            gs = state(min_call=0, pot_size=100, community_cards=board, num_active=2)
+            strategy.decide(gs, make_view(hole_cards=STRONG_HAND))
+        finally:
+            eng.monte_carlo_equity = original
+
+        assert captured.get('trials') == 200
 
 
 if __name__ == "__main__":

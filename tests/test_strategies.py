@@ -16,7 +16,7 @@ from strategies.engine import (
 )
 from strategies.profile import PROFILES, StyleProfile
 from strategies.hand_score import score_starting_hand
-from strategies.difficulty import DIFFICULTY_LEVELS, NORMAL, HARD, EASY
+from strategies.difficulty import DIFFICULTY_LEVELS, NORMAL, HARD, EASY, mistakes_for, MISTAKE_PROFILES
 from strategies.utils import estimate_equity, pot_odds, position_adjustment, calc_raise_amount
 
 
@@ -503,6 +503,131 @@ class TestDifficultyBehavior:
     def test_easy_strategy_has_difficulty_attribute(self):
         s = TightAggressiveStrategy(difficulty=EASY)
         assert s.difficulty == EASY
+
+    def test_strategy_has_mistakes_profile(self):
+        s = BalancedStrategy(difficulty=HARD)
+        assert s.mistakes is MISTAKE_PROFILES['hard']
+
+    def test_noise_amplitude_comes_from_mistakes_profile(self):
+        import random
+        s = BalancedStrategy(difficulty=1.0)  # perfect: zero noise
+        assert s._noisy_score(50) == 50
+        assert s._noisy_equity(0.5) == 0.5
+        assert s._noisy_odds(0.3) == 0.3
+
+        very_easy = BalancedStrategy(difficulty=0.2)
+        vals = [very_easy._noisy_equity(0.5) for _ in range(500)]
+        assert all(abs(v - 0.5) <= 0.12 + 1e-9 for v in vals)
+        assert max(vals) - min(vals) > 0.05  # noise is actually applied
+
+
+class TestCallGateMarginScaled:
+    """The TightAggressive EV leak fix (Phase 2 Task 3): a clearly profitable
+    call must not be gated behind a low call_freq at hard+ difficulty."""
+
+    def test_hard_tag_almost_always_calls_a_clear_winner(self):
+        strategy = TightAggressiveStrategy(difficulty=HARD)
+        strategy._noisy_equity = lambda raw: 0.60
+        strategy._noisy_odds = lambda raw: 0.25
+        hole = [Card(Rank.NINE, Suit.SPADES), Card(Rank.TWO, Suit.HEARTS)]
+        board = [Card(Rank.THREE, Suit.CLUBS), Card(Rank.FIVE, Suit.DIAMONDS),
+                 Card(Rank.SEVEN, Suit.SPADES)]
+        gs = state(min_call=50, pot_size=150, community_cards=board, num_active=2)
+        view = make_view(chips=1000, hole_cards=hole)
+
+        acted = sum(1 for _ in range(500)
+                    if strategy.decide(gs, view)[0]
+                    in (PlayerAction.CALL, PlayerAction.RAISE, PlayerAction.ALL_IN))
+        assert acted / 500 >= 0.90
+
+    def test_aa_never_folds_facing_a_raise_at_any_difficulty(self):
+        gs = {
+            'min_call': 100, 'min_raise': 20, 'pot_size': 100,
+            'community_cards': [], 'position': 0, 'num_active': 4,
+            'players_info': [], 'hand_log': [], 'player_role': 'BB',
+            'big_blind': 20, 'current_bet': 120,
+        }
+        view = make_view(chips=1000, hole_cards=STRONG_HAND)  # AA
+        for label, d in DIFFICULTY_LEVELS.items():
+            for _ in range(200):
+                strategy = DesignedBotStrategy(PROFILES['nit'], difficulty=d)
+                action, _ = strategy.decide(gs, view)
+                assert action != PlayerAction.FOLD, f"AA folded at {label}"
+
+
+class TestDrawChasingByMode:
+    """Phase 2 Task 4: chase_draws mode facing a pot-sized bet with a
+    gutshot (4 outs, low direct equity)."""
+
+    GUTSHOT_HOLE = [Card(Rank.EIGHT, Suit.SPADES), Card(Rank.NINE, Suit.DIAMONDS)]
+    GUTSHOT_BOARD = [Card(Rank.FIVE, Suit.HEARTS), Card(Rank.SIX, Suit.CLUBS),
+                      Card(Rank.KING, Suit.DIAMONDS)]
+
+    def _rate(self, difficulty, trials=300):
+        gs = state(min_call=100, pot_size=100, community_cards=self.GUTSHOT_BOARD, num_active=2)
+        view = make_view(chips=1000, hole_cards=self.GUTSHOT_HOLE)
+        acted = 0
+        for _ in range(trials):
+            strategy = BalancedStrategy(difficulty=difficulty)
+            action, _ = strategy.decide(gs, view)
+            if action in (PlayerAction.CALL, PlayerAction.RAISE, PlayerAction.ALL_IN):
+                acted += 1
+        return acted / trials
+
+    def test_very_easy_calls_almost_always(self):
+        assert self._rate(0.2) >= 0.95
+
+    def test_easy_calls(self):
+        assert self._rate(0.4) >= 0.90
+
+    def test_normal_folds_when_odds_not_close(self):
+        assert self._rate(0.6) <= 0.10
+
+    def test_hard_folds(self):
+        assert self._rate(0.75) <= 0.05
+
+
+class TestOvervalueBias:
+    """Phase 2 Task 4: bare ace-high on a dry board is overvalued more at
+    low difficulty than at hard+."""
+
+    def test_very_easy_bets_ace_high_more_than_hard(self):
+        hole = [Card(Rank.ACE, Suit.SPADES), Card(Rank.FOUR, Suit.HEARTS)]
+        board = [Card(Rank.NINE, Suit.CLUBS), Card(Rank.TWO, Suit.DIAMONDS),
+                 Card(Rank.KING, Suit.SPADES)]
+        gs = state(min_call=0, pot_size=100, community_cards=board, num_active=2)
+        view = make_view(chips=1000, hole_cards=hole)
+
+        def bet_rate(difficulty):
+            acted = 0
+            for _ in range(300):
+                strategy = BalancedStrategy(difficulty=difficulty)
+                action, _ = strategy.decide(gs, view)
+                if action in (PlayerAction.RAISE, PlayerAction.ALL_IN):
+                    acted += 1
+            return acted / 300
+
+        assert bet_rate(0.2) > bet_rate(0.75)
+
+
+class TestMistakesFor:
+    """Float -> MistakeProfile boundary mapping (Phase 2 Task 1)."""
+
+    @pytest.mark.parametrize("difficulty,expected_label", [
+        (0.2,  'very_easy'),
+        (0.59, 'easy'),
+        (0.6,  'normal'),
+        (0.74, 'normal'),
+        (0.75, 'hard'),
+        (1.0,  'perfect'),
+    ])
+    def test_boundaries(self, difficulty, expected_label):
+        assert mistakes_for(difficulty).label == expected_label
+
+    def test_profiles_are_frozen(self):
+        import dataclasses
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            MISTAKE_PROFILES['hard'].label = 'mutated'
 
 
 # ---------------------------------------------------------------------------

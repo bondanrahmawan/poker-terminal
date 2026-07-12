@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class CreateGameRequest(BaseModel):
     player_name: str = "Player"
     num_bots: int = Field(default=3, ge=1, le=12)
-    difficulty: Literal["easy", "normal", "hard"] = "normal"
+    difficulty: Literal["easy", "normal", "hard", "expert"] = "normal"
     game_mode: Literal["tournament", "cash"] = "tournament"
     starting_chips: int = Field(default=1000, ge=1)
     big_blind: int = Field(default=20, ge=2)

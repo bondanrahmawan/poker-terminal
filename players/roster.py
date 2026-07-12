@@ -19,7 +19,7 @@ _ROSTER = [
     ("Bot_Charlie", lambda d: LoosePassiveStrategy(d)),
     ("Bot_Dave",    lambda d: TightPassiveStrategy(d)),
     ("Bot_Eve",     lambda d: BalancedStrategy(d)),
-    ("Bot_Frank",   lambda d: TightAggressiveStrategy(HARD if d >= NORMAL else d)),
+    ("Bot_Frank",   lambda d: TightAggressiveStrategy(max(d, HARD))),
     ("Bot_Grace",   lambda d: NitStrategy(d)),
     ("Bot_Hank",    lambda d: LooseAggressiveStrategy(d)),
     ("Bot_Iris",    lambda d: BalancedStrategy(EASY if d <= NORMAL else d)),
