@@ -5113,6 +5113,235 @@
           "strategy": "balanced"
         }
       ]
+    },
+    {
+      "session_id": 24,
+      "difficulty": "Easy",
+      "date": "2026-07-12 14:09:14",
+      "hands_played": 8,
+      "game_mode": "tournament",
+      "players": [
+        {
+          "player_id": "h1",
+          "name": "Player",
+          "is_human": true,
+          "starting_chips": 4444,
+          "final_chips": 12824,
+          "hands_played": 8,
+          "hands_won": 1,
+          "chips_won": 294,
+          "biggest_pot": 294,
+          "best_hand_rank": 0,
+          "best_hand_name": "-",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": 8380
+        },
+        {
+          "player_id": "b0",
+          "name": "Bot_Iris",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 4428,
+          "hands_played": 8,
+          "hands_won": 0,
+          "chips_won": 0,
+          "biggest_pot": 0,
+          "best_hand_rank": 0,
+          "best_hand_name": "-",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": -16,
+          "strategy": "balanced"
+        },
+        {
+          "player_id": "b1",
+          "name": "Bot_Dave",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 705,
+          "hands_played": 8,
+          "hands_won": 0,
+          "chips_won": 0,
+          "biggest_pot": 0,
+          "best_hand_rank": 3,
+          "best_hand_name": "Two Pair",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": -3739,
+          "strategy": "tight_passive"
+        },
+        {
+          "player_id": "b2",
+          "name": "Bot_Jack",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 4417,
+          "hands_played": 8,
+          "hands_won": 0,
+          "chips_won": 0,
+          "biggest_pot": 0,
+          "best_hand_rank": 0,
+          "best_hand_name": "-",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": -27,
+          "strategy": "tight_aggressive"
+        },
+        {
+          "player_id": "b3",
+          "name": "Bot_Frank",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 4279,
+          "hands_played": 8,
+          "hands_won": 0,
+          "chips_won": 0,
+          "biggest_pot": 0,
+          "best_hand_rank": 0,
+          "best_hand_name": "-",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": -165,
+          "strategy": "tight_aggressive"
+        },
+        {
+          "player_id": "b4",
+          "name": "Bot_Grace",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 4337,
+          "hands_played": 8,
+          "hands_won": 0,
+          "chips_won": 0,
+          "biggest_pot": 0,
+          "best_hand_rank": 0,
+          "best_hand_name": "-",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": -107,
+          "strategy": "nit"
+        },
+        {
+          "player_id": "b5",
+          "name": "Bot_Mike",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 5308,
+          "hands_played": 8,
+          "hands_won": 2,
+          "chips_won": 1766,
+          "biggest_pot": 1418,
+          "best_hand_rank": 0,
+          "best_hand_name": "-",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": 864,
+          "strategy": "maniac"
+        },
+        {
+          "player_id": "b6",
+          "name": "Bot_Bob",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 4322,
+          "hands_played": 8,
+          "hands_won": 0,
+          "chips_won": 0,
+          "biggest_pot": 0,
+          "best_hand_rank": 0,
+          "best_hand_name": "-",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": -122,
+          "strategy": "tight_aggressive"
+        },
+        {
+          "player_id": "b7",
+          "name": "Bot_Charlie",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 10772,
+          "hands_played": 8,
+          "hands_won": 2,
+          "chips_won": 13937,
+          "biggest_pot": 11696,
+          "best_hand_rank": 3,
+          "best_hand_name": "Two Pair",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": 6328,
+          "strategy": "loose_passive"
+        },
+        {
+          "player_id": "b8",
+          "name": "Bot_Eve",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 6558,
+          "hands_played": 8,
+          "hands_won": 2,
+          "chips_won": 4134,
+          "biggest_pot": 3948,
+          "best_hand_rank": 3,
+          "best_hand_name": "Two Pair",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": 2114,
+          "strategy": "balanced"
+        },
+        {
+          "player_id": "b9",
+          "name": "Bot_Victoria",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 0,
+          "hands_played": 4,
+          "hands_won": 0,
+          "chips_won": 0,
+          "biggest_pot": 0,
+          "best_hand_rank": 2,
+          "best_hand_name": "One Pair",
+          "bust_hand": 4,
+          "rebuys": 0,
+          "net_profit": -4444,
+          "strategy": "trapper"
+        },
+        {
+          "player_id": "b10",
+          "name": "Bot_Alice",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 4286,
+          "hands_played": 8,
+          "hands_won": 0,
+          "chips_won": 0,
+          "biggest_pot": 0,
+          "best_hand_rank": 0,
+          "best_hand_name": "-",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": -158,
+          "strategy": "balanced"
+        },
+        {
+          "player_id": "b11",
+          "name": "Bot_Hank",
+          "is_human": false,
+          "starting_chips": 4444,
+          "final_chips": 4424,
+          "hands_played": 8,
+          "hands_won": 1,
+          "chips_won": 415,
+          "biggest_pot": 415,
+          "best_hand_rank": 0,
+          "best_hand_name": "-",
+          "bust_hand": null,
+          "rebuys": 0,
+          "net_profit": -20,
+          "strategy": "loose_aggressive"
+        }
+      ]
     }
   ],
   "players": {
@@ -5420,6 +5649,19 @@
             "biggest_pot": 3522,
             "best_hand_name": "Straight",
             "rebuys": 1,
+            "strategy": "human"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 1,
+            "starting_chips": 4444,
+            "final_chips": 12824,
+            "net_profit": 8380,
+            "biggest_pot": 294,
+            "best_hand_name": "-",
+            "rebuys": 0,
             "strategy": "human"
           }
         ]
@@ -5730,6 +5972,19 @@
             "best_hand_name": "Two Pair",
             "rebuys": 0,
             "strategy": "tight_passive"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 0,
+            "starting_chips": 4444,
+            "final_chips": 4428,
+            "net_profit": -16,
+            "biggest_pot": 0,
+            "best_hand_name": "-",
+            "rebuys": 0,
+            "strategy": "balanced"
           }
         ]
       }
@@ -6039,6 +6294,19 @@
             "best_hand_name": "One Pair",
             "rebuys": 0,
             "strategy": "tight_aggressive"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 0,
+            "starting_chips": 4444,
+            "final_chips": 705,
+            "net_profit": -3739,
+            "biggest_pot": 0,
+            "best_hand_name": "Two Pair",
+            "rebuys": 0,
+            "strategy": "tight_passive"
           }
         ]
       }
@@ -6348,6 +6616,19 @@
             "best_hand_name": "One Pair",
             "rebuys": 0,
             "strategy": "loose_aggressive"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 0,
+            "starting_chips": 4444,
+            "final_chips": 4417,
+            "net_profit": -27,
+            "biggest_pot": 0,
+            "best_hand_name": "-",
+            "rebuys": 0,
+            "strategy": "tight_aggressive"
           }
         ]
       }
@@ -6644,6 +6925,19 @@
             "best_hand_name": "Two Pair",
             "rebuys": 0,
             "strategy": "maniac"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 0,
+            "starting_chips": 4444,
+            "final_chips": 4279,
+            "net_profit": -165,
+            "biggest_pot": 0,
+            "best_hand_name": "-",
+            "rebuys": 0,
+            "strategy": "tight_aggressive"
           }
         ]
       }
@@ -6940,6 +7234,19 @@
             "best_hand_name": "Three of a Kind",
             "rebuys": 0,
             "strategy": "trapper"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 0,
+            "starting_chips": 4444,
+            "final_chips": 4337,
+            "net_profit": -107,
+            "biggest_pot": 0,
+            "best_hand_name": "-",
+            "rebuys": 0,
+            "strategy": "nit"
           }
         ]
       }
@@ -7236,6 +7543,19 @@
             "best_hand_name": "One Pair",
             "rebuys": 0,
             "strategy": "nit"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 2,
+            "starting_chips": 4444,
+            "final_chips": 5308,
+            "net_profit": 864,
+            "biggest_pot": 1418,
+            "best_hand_name": "-",
+            "rebuys": 0,
+            "strategy": "maniac"
           }
         ]
       }
@@ -7530,6 +7850,19 @@
             "net_profit": -1000,
             "biggest_pot": 1155,
             "best_hand_name": "Two Pair",
+            "rebuys": 0,
+            "strategy": "tight_aggressive"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 0,
+            "starting_chips": 4444,
+            "final_chips": 4322,
+            "net_profit": -122,
+            "biggest_pot": 0,
+            "best_hand_name": "-",
             "rebuys": 0,
             "strategy": "tight_aggressive"
           }
@@ -7828,6 +8161,19 @@
             "best_hand_name": "Three of a Kind",
             "rebuys": 0,
             "strategy": "tight_aggressive"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 2,
+            "starting_chips": 4444,
+            "final_chips": 10772,
+            "net_profit": 6328,
+            "biggest_pot": 11696,
+            "best_hand_name": "Two Pair",
+            "rebuys": 0,
+            "strategy": "loose_passive"
           }
         ]
       }
@@ -8122,6 +8468,19 @@
             "net_profit": 1994,
             "biggest_pot": 2422,
             "best_hand_name": "Straight",
+            "rebuys": 0,
+            "strategy": "balanced"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 2,
+            "starting_chips": 4444,
+            "final_chips": 6558,
+            "net_profit": 2114,
+            "biggest_pot": 3948,
+            "best_hand_name": "Two Pair",
             "rebuys": 0,
             "strategy": "balanced"
           }
@@ -8420,6 +8779,19 @@
             "best_hand_name": "Straight",
             "rebuys": 0,
             "strategy": "balanced"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 4,
+            "hands_won": 0,
+            "starting_chips": 4444,
+            "final_chips": 0,
+            "net_profit": -4444,
+            "biggest_pot": 0,
+            "best_hand_name": "One Pair",
+            "rebuys": 0,
+            "strategy": "trapper"
           }
         ]
       }
@@ -8714,6 +9086,19 @@
             "net_profit": -1000,
             "biggest_pot": 0,
             "best_hand_name": "Two Pair",
+            "rebuys": 0,
+            "strategy": "balanced"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 0,
+            "starting_chips": 4444,
+            "final_chips": 4286,
+            "net_profit": -158,
+            "biggest_pot": 0,
+            "best_hand_name": "-",
             "rebuys": 0,
             "strategy": "balanced"
           }
@@ -9012,6 +9397,19 @@
             "best_hand_name": "One Pair",
             "rebuys": 0,
             "strategy": "loose_passive"
+          },
+          {
+            "session_id": 24,
+            "date": "2026-07-12 14:09:14",
+            "hands_played": 8,
+            "hands_won": 1,
+            "starting_chips": 4444,
+            "final_chips": 4424,
+            "net_profit": -20,
+            "biggest_pot": 415,
+            "best_hand_name": "-",
+            "rebuys": 0,
+            "strategy": "loose_aggressive"
           }
         ]
       }

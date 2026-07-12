@@ -15,6 +15,7 @@ const S = {
 
 let wsRetryDelay = 1000; // reconnect backoff: 1s, 2s, 4s … cap 10s
 let handWinnings = {};   // pid → {pid, name, amount}; reset each hand (V2 summary)
+let statsThenQuit = false; // stats modal opened via Quit → closing it leaves the table
 
 const esc = (s) => String(s).replace(/[&<>"']/g,
   (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
@@ -257,6 +258,10 @@ async function pump() {
   while (S.queue.length) {
     const ev = S.queue.shift();
     S.lastSeq = ev.seq;
+    // The full fresh view is held back until the queue drains, so wipe the
+    // previous hand's board here — otherwise its community cards linger on the
+    // felt while the new hand's blinds/antes animate.
+    if (ev.type === "hand_started") clearCommunity();
     const line = appendHistory(ev);           // every event (tracks winnings, returns caption line)
     if (line) showCaption(ev, line);          // banner + seat highlight
     // No caption → nothing to read → no dwell (kills hand-start dead air).
@@ -522,6 +527,16 @@ function statsInsights(rows) {
 
 function closeStats() {
   el("stats-modal").classList.add("hidden");
+  if (statsThenQuit) {
+    statsThenQuit = false;
+    finalizeQuit();
+  }
+}
+
+// Persist the session server-side (DELETE), then reset to the menu.
+async function finalizeQuit() {
+  try { await fetch(`/games/${S.gameId}`, { method: "DELETE" }); } catch (e) { /* best effort */ }
+  newGame();
 }
 
 // ── Landing menu + tournament-stats viewer ────────────────────────────────────
@@ -1204,6 +1219,13 @@ function renderCommunity(v) {
   el("community").innerHTML = slots.join("");
 }
 
+// Reset the board to five empty slots (called at hand start, before the fresh
+// view lands).
+function clearCommunity() {
+  el("community").innerHTML =
+    `<span class="card empty"></span>`.repeat(5);
+}
+
 function renderHole(v) {
   const you = v.players.find((p) => p.is_you);
   const cards = (you && you.hole_cards) || [];
@@ -1251,11 +1273,15 @@ function renderActionBar(v) {
   }
 }
 
-// Leave the table for good: persist the session server-side (DELETE), then reset.
+// Leave the table for good: show the finished game's stats first, then persist
+// and return to the menu once the modal is dismissed (finalizeQuit, via
+// closeStats). Stats are fetched while the game still exists — before DELETE.
 async function quitTable() {
   if (!confirm("Leave this table? Your session stats will be saved.")) return;
-  try { await fetch(`/games/${S.gameId}`, { method: "DELETE" }); } catch (e) { /* best effort */ }
-  newGame();
+  statsThenQuit = true;
+  await showStats();
+  // If stats couldn't be shown (e.g. request failed), don't strand the user.
+  if (el("stats-modal").classList.contains("hidden")) closeStats();
 }
 
 function renderActions(bar, req) {
