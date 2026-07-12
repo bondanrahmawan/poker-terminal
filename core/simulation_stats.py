@@ -248,6 +248,10 @@ class SimulationStatsManager:
 
     # ── Viewer ────────────────────────────────────────────────────────────────
 
+    def get_data(self) -> Dict:
+        """Return the raw loaded stats dict (read-only accessor for the API)."""
+        return self._data
+
     def print_stats(self) -> None:
         print("\n" + "=" * 60)
         print("  Simulation Statistics")

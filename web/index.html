@@ -14,7 +14,7 @@
       <button type="button" data-menu="play">▶ Play</button>
       <button type="button" data-menu="sim" disabled>▶ Simulation <span class="soon">coming in M4</span></button>
       <button type="button" data-menu="tstats">▶ Tournament stats</button>
-      <button type="button" data-menu="sstats" disabled>▶ Simulation stats <span class="soon">coming in M2</span></button>
+      <button type="button" data-menu="sstats">▶ Simulation stats</button>
     </div>
   </section>
 
@@ -106,6 +106,22 @@
       </div>
     </div>
     <div id="sv-body"></div>
+  </section>
+
+  <!-- ── Simulation stats viewer ──────────────────────────────────────────── -->
+  <section id="sim-stats-view" class="screen hidden">
+    <header id="ssv-header">
+      <button type="button" class="back-btn" id="sim-stats-back">← Menu</button>
+      <h1>Simulation Stats</h1>
+    </header>
+    <div id="ssv-controls">
+      <div id="ssv-tabs">
+        <button type="button" class="chip-btn active" data-tab="sessions">Session history</button>
+        <button type="button" class="chip-btn" data-tab="ava">All-vs-All</button>
+        <button type="button" class="chip-btn" data-tab="h2h">Head-to-Head</button>
+      </div>
+    </div>
+    <div id="ssv-body"></div>
   </section>
 
   <!-- ── Stats modal ──────────────────────────────────────────────────────── -->

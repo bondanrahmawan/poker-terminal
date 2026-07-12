@@ -4,7 +4,7 @@ const S = {
   gameId: null,
   view: null,
   ws: null,
-  phase: "menu", // "menu" | "settings" | "table" | "stats_view"
+  phase: "menu", // "menu" | "settings" | "table" | "stats_view" | "sim_stats"
   lastSeq: -1,        // highest event seq seen (dedupe + backfill cursor)
   queue: [],          // events awaiting animation
   animating: false,
@@ -651,6 +651,155 @@ function renderPlayerHistory(h) {
     `<div class="insights">${allTime}${byDiff}</div>`;
 }
 
+// ── Simulation-stats viewer ───────────────────────────────────────────────────
+// Mirrors core/simulation_stats.py print_* methods. Three tabs match print_stats:
+// session history, all-time all-vs-all rankings, all-time head-to-head matrix.
+
+const SS = { tab: "sessions", data: null };
+
+// Signed percentage, e.g. +1.2 / -3.4 — mirrors Python's "{v:+.Nf}".
+const signedPct = (v, d = 1) => (v >= 0 ? "+" : "") + (v * 100).toFixed(d);
+
+async function showSimStats() {
+  S.phase = "sim_stats";
+  render();
+  el("ssv-body").textContent = "Loading…";
+  try {
+    const res = await fetch("/stats/simulation");
+    SS.data = await res.json();
+  } catch (e) {
+    el("ssv-body").textContent = "Could not load simulation stats.";
+    return;
+  }
+  renderSimStats();
+}
+
+function renderSimStats() {
+  el("ssv-tabs").querySelectorAll("button").forEach((b) =>
+    b.classList.toggle("active", b.dataset.tab === SS.tab));
+  const body = el("ssv-body");
+  const d = SS.data || {};
+  if (SS.tab === "sessions") body.innerHTML = renderSimSessions(d.sessions || []);
+  else if (SS.tab === "ava") body.innerHTML = renderSimAllTime((d.alltime || {}).all_vs_all || {});
+  else body.innerHTML = renderSimH2H((d.alltime || {}).h2h || {});
+}
+
+function simConfigStr(cfg) {
+  const tags = [`${esc(cfg.stack_depth)} stack`];
+  if (cfg.ante) tags.push("ante");
+  if (cfg.short_deck) tags.push("short");
+  return tags.join(", ");
+}
+
+// Top-result string per session type — mirrors _print_session_history.
+function simTopResult(s) {
+  try {
+    if (s.type === "all_vs_all") {
+      const top = Object.entries(s.results).reduce((a, b) => (b[1].rank < a[1].rank ? b : a));
+      return `${esc(top[0])} (${signedPct(top[1].avg_net_roi)}% ROI)`;
+    }
+    if (s.type === "h2h") {
+      const best = Object.entries(s.results.overall_win_rates).reduce((a, b) => (b[1] > a[1] ? b : a));
+      return `${esc(best[0])} (${best[1].toFixed(1)}% overall)`;
+    }
+    if (s.type === "param_sweep") {
+      const r = s.results;
+      return `${esc(r.param_name)}=${esc(String(r.optimal_value))} (${signedPct(r.optimal_net_roi)}% ROI)`;
+    }
+  } catch (e) { /* fall through to raw */ }
+  return `<span class="dim">${esc(JSON.stringify(s.results))}</span>`;
+}
+
+function renderSimSessions(sessions) {
+  if (!sessions.length) return `<p class="sv-empty">No simulations yet.</p>`;
+  const rows = sessions.map((s) => {
+    const cfg = s.config || {};
+    return `<tr><td>${s.session_id}</td><td>${esc(s.type)}</td><td>${esc(s.date)}</td>` +
+      `<td>${esc(cfg.difficulty || "—")}</td><td>${simConfigStr(cfg)}</td>` +
+      `<td>${simTopResult(s)}</td></tr>`;
+  }).join("");
+  return `<table><thead><tr><th>#</th><th>Type</th><th>Date</th><th>Difficulty</th>` +
+    `<th>Config</th><th>Top Result</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// Bucket key: "difficulty|short_deck|ante|depth". Returns a readable header.
+function bucketLabel(key) {
+  const [diff, short, ante, depth] = key.split("|");
+  const tags = [`${esc(depth)} stack`];
+  if (ante === "True") tags.push("ante");
+  if (short === "True") tags.push("short deck");
+  return `${esc(diff)} · ${tags.join(", ")}`;
+}
+
+function renderSimAllTime(buckets) {
+  const keys = Object.keys(buckets);
+  if (!keys.length) return `<p class="sv-empty">No simulations yet.</p>`;
+  return keys.map((key) => {
+    const data = buckets[key];
+    const totalTables = data.total_tables || 0;
+    const sessions = data.sessions_count || 0;
+    // Strategy entries are the dict values carrying total_roi; others are meta.
+    const rows = Object.entries(data)
+      .filter(([, s]) => s && typeof s === "object" && "total_roi" in s)
+      .map(([sname, s]) => {
+        const avgRoi = totalTables > 0 ? s.total_roi / totalTables : 0;
+        const winRate = s.total_hands_played > 0
+          ? (s.total_hands_won / s.total_hands_played * 100) : 0;
+        const firsts = (s.rank_histogram || {})["1"] || 0;
+        return { sname, avgRoi, winRate, tablesWon: s.tables_won || 0, rebuys: s.total_rebuys || 0, firsts };
+      })
+      .sort((a, b) => b.avgRoi - a.avgRoi);
+
+    if (!rows.length) return `<h3 class="sv-group">${bucketLabel(key)}</h3><p class="sv-empty">No data in this bucket.</p>`;
+
+    const body = rows.map((r, i) =>
+      `<tr><td>${i + 1}</td><td>${esc(r.sname)}</td>` +
+      `<td class="${r.avgRoi >= 0 ? "pos" : "neg"}">${signedPct(r.avgRoi, 2)}%</td>` +
+      `<td>${r.winRate.toFixed(1)}%</td><td>${r.tablesWon.toLocaleString()}</td>` +
+      `<td>${r.firsts}</td><td>${r.rebuys.toLocaleString()}</td></tr>`).join("");
+
+    return `<h3 class="sv-group">${bucketLabel(key)} ` +
+      `<span class="dim">(${sessions} sessions, ${totalTables.toLocaleString()} tables)</span></h3>` +
+      `<table><thead><tr><th>Rank</th><th>Strategy</th><th>Avg ROI</th><th>Win%</th>` +
+      `<th>Tbl Won</th><th>1st</th><th>Rebuys</th></tr></thead><tbody>${body}</tbody></table>`;
+  }).join("");
+}
+
+function renderSimH2H(buckets) {
+  const keys = Object.keys(buckets);
+  if (!keys.length) return `<p class="sv-empty">No simulations yet.</p>`;
+  return keys.map((key) => {
+    const data = buckets[key];
+    const sessions = data.sessions_count || 0;
+    const names = Object.keys(data).filter((k) => data[k] && typeof data[k] === "object" && "vs" in data[k]);
+    if (!names.length) return `<h3 class="sv-group">${bucketLabel(key)}</h3><p class="sv-empty">No H2H data in this bucket.</p>`;
+
+    const head = `<tr><th></th>${names.map((n) => `<th>${esc(n)}</th>`).join("")}<th>Overall</th></tr>`;
+    const rows = names.map((si) => {
+      const entry = data[si];
+      const cells = names.map((sj) => {
+        if (si === sj) return `<td class="dim">—</td>`;
+        const vs = (entry.vs || {})[sj] || {};
+        if (!vs.total) return `<td class="dim">N/A</td>`;
+        const pct = vs.wins / vs.total * 100;
+        const cls = pct >= 60 ? "pos" : pct <= 40 ? "neg" : "";
+        return `<td class="${cls}">${pct.toFixed(1)}%</td>`;
+      }).join("");
+      let overall = `<td class="dim">N/A</td>`;
+      if (entry.overall_total > 0) {
+        const ov = entry.overall_wins / entry.overall_total * 100;
+        const cls = ov >= 55 ? "pos" : ov < 45 ? "neg" : "";
+        overall = `<td class="${cls}">${ov.toFixed(1)}%</td>`;
+      }
+      return `<tr><th>${esc(si)}</th>${cells}${overall}</tr>`;
+    }).join("");
+
+    return `<h3 class="sv-group">${bucketLabel(key)} <span class="dim">(${sessions} sessions)</span></h3>` +
+      `<p class="ssv-note">row beats column</p>` +
+      `<table class="ssv-matrix"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+  }).join("");
+}
+
 function initHistoryToggle() {
   const panel = el("history-panel");
   panel.classList.toggle("collapsed", localStorage.getItem("poker.history") === "1");
@@ -718,6 +867,7 @@ function render() {
   el("settings").classList.toggle("hidden", S.phase !== "settings");
   el("table").classList.toggle("hidden", S.phase !== "table");
   el("stats-view").classList.toggle("hidden", S.phase !== "stats_view");
+  el("sim-stats-view").classList.toggle("hidden", S.phase !== "sim_stats");
   if (S.phase === "table") renderTable();
 }
 
@@ -958,9 +1108,17 @@ el("menu-list").addEventListener("click", (e) => {
   if (!btn || btn.disabled) return;
   if (btn.dataset.menu === "play") showSettings();
   else if (btn.dataset.menu === "tstats") showStatsView();
+  else if (btn.dataset.menu === "sstats") showSimStats();
 });
 el("settings-back").addEventListener("click", showMenu);
 el("stats-view-back").addEventListener("click", showMenu);
+el("sim-stats-back").addEventListener("click", showMenu);
+el("ssv-tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-tab]");
+  if (!btn) return;
+  SS.tab = btn.dataset.tab;
+  renderSimStats();
+});
 el("sv-difficulty").addEventListener("change", (e) => {
   SV.difficulty = e.target.value;
   loadStatsView();

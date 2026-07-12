@@ -203,6 +203,26 @@ button:disabled { background: #3a5a42; cursor: default; }
 #sv-body .ins-sub { margin: 0.8rem 0 0.3rem; opacity: 0.7; }
 #sv-body .ins-line { padding: 0.15rem 0; }
 
+/* ── Simulation stats viewer ──────────────────────────────────────────────── */
+#ssv-header { display: flex; align-items: center; gap: 1rem; }
+#ssv-header h1 { margin: 0; }
+#ssv-controls { margin: 1rem 0; }
+#ssv-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+#ssv-tabs button.active { background: #2f7d46; }
+#ssv-body { overflow-x: auto; }
+#ssv-body table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 1rem; }
+#ssv-body th, #ssv-body td { text-align: right; padding: 0.3rem 0.4rem; white-space: nowrap; }
+#ssv-body th:first-child, #ssv-body td:first-child { text-align: left; }
+#ssv-body thead th { border-bottom: 1px solid #26402c; opacity: 0.8; }
+#ssv-body .pos { color: #7fd68f; }
+#ssv-body .neg { color: #e08585; }
+#ssv-body .dim { opacity: 0.55; }
+#ssv-body .sv-group { font-size: 1rem; margin: 0.8rem 0 0.4rem; }
+#ssv-body .sv-empty { opacity: 0.7; }
+#ssv-body .ssv-note { margin: 0 0 0.3rem; opacity: 0.6; font-size: 0.8rem; }
+#ssv-body .ssv-matrix th { text-align: right; }
+#ssv-body .ssv-matrix th:first-child { text-align: left; }
+
 /* ── Simple display mode ──────────────────────────────────────────────────────
    CSS-only: drop the felt ellipse and absolute positioning; inline left/top are
    inert once the seats are position:static, so no JS/DOM change is needed. */

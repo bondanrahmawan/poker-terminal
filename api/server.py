@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, Response
 
 from core.errors import IllegalActionError
 from core.stats_persistent import PersistentStatsManager
+from core.simulation_stats import SimulationStatsManager
 from api.schemas import CreateGameRequest, StartHandRequest, ActionRequestBody
 from api.sessions import (
     SessionManager, GameSession, CapacityError,
@@ -178,6 +179,10 @@ def create_app() -> FastAPI:
     @app.get("/stats/tournament/sessions")
     async def stats_sessions(difficulty: Optional[str] = Query(None)):
         return PersistentStatsManager().get_session_history(difficulty)
+
+    @app.get("/stats/simulation")
+    async def stats_simulation():
+        return SimulationStatsManager().get_data()
 
     # ── WebSocket ─────────────────────────────────────────────────────────────
 
