@@ -1090,6 +1090,29 @@ function initSimpleMode() {
     document.body.classList.toggle("simple", box.checked);
     localStorage.setItem("poker.simple", box.checked ? "1" : "0");
   });
+  // Auto-follow the breakpoint until the user makes an explicit choice, so
+  // rotating/resizing onto a narrow screen switches to the stacked view.
+  matchMedia("(max-width: 640px)").addEventListener("change", (e) => {
+    if (localStorage.getItem("poker.simple") !== null) return;
+    box.checked = e.matches;
+    document.body.classList.toggle("simple", e.matches);
+  });
+}
+
+// Light/dark theme: persisted, defaults to dark. Applied on <html> so the CSS
+// variable overrides cascade to everything.
+function initTheme() {
+  const stored = localStorage.getItem("poker.theme");
+  applyTheme(stored === "light" ? "light" : "dark");
+  el("theme-toggle").addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+    applyTheme(next);
+    localStorage.setItem("poker.theme", next);
+  });
+}
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  el("theme-toggle").textContent = theme === "light" ? "☀️" : "🌙";
 }
 
 // ── Settings → create game ───────────────────────────────────────────────────
@@ -1170,8 +1193,10 @@ function cardHTML(c) {
 function seatPosition(rel, total) {
   // Human (rel 0) sits bottom-centre; others spread clockwise around an ellipse.
   const theta = Math.PI / 2 + (rel / total) * 2 * Math.PI;
-  const x = 50 + 44 * Math.cos(theta);
-  const y = 50 + 42 * Math.sin(theta);
+  // Radii kept clear of the seat box's half-width/height so side and end seats
+  // stay inside the felt oval rather than spilling over its rim.
+  const x = 50 + 40 * Math.cos(theta);
+  const y = 50 + 38 * Math.sin(theta);
   return { x, y };
 }
 
@@ -1480,4 +1505,5 @@ document.addEventListener("keydown", (e) => {
 
 initHistoryToggle();
 initSimpleMode();
+initTheme();
 restoreSession();
