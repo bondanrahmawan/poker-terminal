@@ -591,7 +591,13 @@ class Game:
         """Handle the showdown: evaluate hands and distribute pots."""
         self.log("\n--- SHOWDOWN ---")
         self.log(f"Community: {self.community_cards}")
-        self.emit('showdown_started', community=[c.to_dict() for c in self.community_cards])
+
+        active_players: List[Player] = [p for p in self.players if p.is_active]
+        # Only announce a showdown when it's actually contested — a hand that
+        # ends by everyone folding to one player reveals no cards.
+        if len(active_players) > 1:
+            self.emit('showdown_started',
+                      community=[c.to_dict() for c in self.community_cards])
 
         # Show folded players
         folded = [(p, self.fold_streets.get(p.player_id, 'preflop'))
@@ -604,7 +610,6 @@ class Game:
         self.pot_manager.calculate_pots([p.player_id for p in self.players if p.is_active])
 
         # Evaluate active players
-        active_players: List[Player] = [p for p in self.players if p.is_active]
         hand_scores: Dict[str, Tuple[tuple, str, str]] = {}
         
         if len(active_players) > 1:

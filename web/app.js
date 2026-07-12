@@ -182,7 +182,10 @@ function sendAction(action, amount = 0) {
 
 async function nextHand(rebuy = false) {
   const res = await postJSON(`/games/${S.gameId}/hands`, rebuy ? { rebuy: true } : {});
-  if (res.ok) return; // the WS broadcast drives the next hand's render
+  if (res.ok) {
+    setStatus(""); // clear any lingering status (e.g. "You're out of chips." after a rebuy)
+    return;        // the WS broadcast drives the next hand's render
+  }
   const info = await res.json().catch(() => ({}));
   if (info.reason === "busted") {
     showRebuyPrompt();
