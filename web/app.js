@@ -1195,8 +1195,8 @@ function seatPosition(rel, total) {
   const theta = Math.PI / 2 + (rel / total) * 2 * Math.PI;
   // Radii kept clear of the seat box's half-width/height so side and end seats
   // stay inside the felt oval rather than spilling over its rim.
-  const x = 50 + 40 * Math.cos(theta);
-  const y = 50 + 38 * Math.sin(theta);
+  const x = 50 + 42 * Math.cos(theta);
+  const y = 50 + 40 * Math.sin(theta);
   return { x, y };
 }
 
@@ -1206,6 +1206,11 @@ function renderSeats(v) {
   const players = v.players;
   const youIdx = players.findIndex((p) => p.is_you);
   const anchor = youIdx >= 0 ? youIdx : 0;
+
+  // Scale seat boxes down as the table fills so they stay clear of each other.
+  const n = players.length;
+  seats.style.setProperty("--seat-w", (n > 10 ? 104 : n > 7 ? 114 : 124) + "px");
+  seats.classList.toggle("crowded", n > 8);
 
   players.forEach((p, idx) => {
     const rel = (idx - anchor + players.length) % players.length;

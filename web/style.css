@@ -118,11 +118,11 @@ button:disabled { background: var(--surface-3); color: var(--text-dim); cursor: 
    below 860px. */
 #table:not(.hidden) {
   display: grid;
-  grid-template-columns: 260px minmax(0, 760px) 260px;
+  grid-template-columns: 260px minmax(0, 900px) 260px;
   justify-content: center;
   gap: 1rem;
   align-items: start;
-  max-width: 1320px;
+  max-width: 1500px;
 }
 #table-main { grid-column: 2; min-width: 0; }
 #history-panel { grid-column: 3; justify-self: start; }
@@ -156,11 +156,11 @@ button:disabled { background: var(--surface-3); color: var(--text-dim); cursor: 
 
 #felt {
   position: relative;
-  height: 480px;
-  max-width: 760px;
+  height: 540px;
+  max-width: 900px;
   margin: 0 auto;
   background: radial-gradient(120% 105% at 50% 0%, var(--felt-1) 0%, var(--felt-2) 72%);
-  border-radius: 210px / 150px;
+  border-radius: 270px / 170px;
   box-shadow:
     inset 0 0 0 7px var(--rail),
     inset 0 2px 26px rgba(0, 0, 0, 0.35),
@@ -172,7 +172,7 @@ button:disabled { background: var(--surface-3); color: var(--text-dim); cursor: 
 .seat {
   position: absolute;
   transform: translate(-50%, -50%);
-  width: 120px;
+  width: var(--seat-w, 120px);
   padding: 0.45rem 0.5rem;
   text-align: center;
   background: var(--seat-bg);
@@ -182,6 +182,10 @@ button:disabled { background: var(--surface-3); color: var(--text-dim); cursor: 
   backdrop-filter: blur(3px);
   box-shadow: 0 2px 8px -2px var(--shadow);
 }
+/* Crowded tables (many seats): shrink the boxes and drop the archetype line so
+   the seats don't collide around the rim. */
+#seats.crowded .seat { padding: 0.3rem 0.35rem; font-size: 0.74rem; }
+#seats.crowded .seat .style { display: none; }
 .seat.you { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 2px 10px -2px var(--shadow); }
 .seat.folded { opacity: 0.4; }
 .seat.busted { opacity: 0.3; filter: grayscale(1); }
@@ -399,8 +403,10 @@ body.simple #center { position: static; transform: none; margin: 0.6rem 0; }
 /* ── Responsive ───────────────────────────────────────────────────────────────
    Below 860px the balancing spacer + sidebar can't fit, so stack to one column
    and centre the felt within it. */
-@media (max-width: 860px) {
-  #table:not(.hidden) { grid-template-columns: minmax(0, 1fr); max-width: 760px; }
+/* Below 1200px the two balancing spacers would squeeze the felt, so stack the
+   History panel below and let the felt take the full (centred) width. */
+@media (max-width: 1200px) {
+  #table:not(.hidden) { grid-template-columns: minmax(0, 1fr); max-width: 900px; }
   #table-main { grid-column: 1; }
   #history-panel { grid-column: 1; width: 100%; max-height: 240px; }
 }
