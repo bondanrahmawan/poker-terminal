@@ -32,6 +32,7 @@ const DWELL = {
   action_taken: 650,
   showdown_started: 500,
   hole_cards_shown: 700,
+  pot_structure: 800,
   pot_awarded: 900,
   hand_ended: 0,
   blinds_raised: 600,
@@ -306,6 +307,12 @@ function eventText(ev) {
       const cards = d.cards.map((c) => c.display).join(" ");
       return `${d.name} shows ${cards} — ${d.hand_name}`;
     }
+    case "pot_structure":
+      return d.pots.map((p, i) =>
+        i === 0
+          ? `${p.label} ${p.amount}`
+          : `${p.label}: ${p.amount} (${p.eligible_names.join(", ")})`
+      ).join(" · ");
     case "pot_awarded":
       return `${d.name} wins ${d.amount}`;
     case "hand_ended":
@@ -359,7 +366,10 @@ function appendHistory(ev) {
   const box = el("history");
   const div = document.createElement("div");
   div.className = ev.type === "hand_started" ? "h-line h-hand" : "h-line";
-  div.textContent = line;
+  // best_five is appended to the history line only; the caption stays terse.
+  div.textContent = (ev.type === "hole_cards_shown" && ev.data.best_five)
+    ? `${line} · best: ${ev.data.best_five}`
+    : line;
   box.appendChild(div);
   while (box.childElementCount > 300) box.removeChild(box.firstChild); // cap
   box.scrollTop = box.scrollHeight;
@@ -507,7 +517,8 @@ function renderTable() {
       (b.hands_to_level != null ? ` · next in ${b.hands_to_level} hand${b.hands_to_level === 1 ? "" : "s"}` : "");
   el("table-info").innerHTML =
     `<span>Hand #${v.hand_number}</span>` +
-    `<span>Blinds ${b.small}/${b.big}${b.ante ? " (ante " + b.ante + ")" : ""} · ${levelStr}</span>`;
+    `<span>Blinds ${b.small}/${b.big}${b.ante ? " (ante " + b.ante + ")" : ""} · ${levelStr}` +
+    `${v.short_deck ? " · Short Deck" : ""}</span>`;
 
   renderSeats(v);
   renderCommunity(v);
@@ -632,6 +643,18 @@ function renderActions(bar, req) {
     else if (a === "raise") mk("Raise", () => toggleRaisePanel(bar, req));
     else if (a === "all-in") mk(`All-in ${req.max_raise_total}`, () => confirmAllIn());
   }
+
+  const info = document.createElement("div");
+  info.className = "hint";
+  const parts = [];
+  if (req.min_call > 0) {
+    const ratio = (req.pot_size / req.min_call).toFixed(1);
+    const pct = Math.round((req.min_call / (req.pot_size + req.min_call)) * 100);
+    parts.push(`To call ${req.min_call} · pot odds ${ratio}:1 (${pct}%)`);
+  }
+  parts.push(`Min raise ${req.min_raise_total}`);
+  info.textContent = parts.join(" · ");
+  bar.appendChild(info);
 }
 
 function confirmAllIn() {

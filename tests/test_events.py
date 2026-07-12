@@ -5,8 +5,22 @@ Run with: pytest tests/test_events.py -v
 import random
 
 from core.game import Game
+from core.player import Player, PlayerAction
 from players.bot import BotPlayer
 from strategies.simple import SimpleStrategy
+
+
+class CallingPlayer(Player):
+    """Deterministic, non-interactive: always checks or calls (no randomness)."""
+
+    def get_action(self, game_state):
+        min_call = game_state['min_call']
+        if min_call == 0:
+            return PlayerAction.CHECK, 0
+        amt = min(self.chips, min_call)
+        if amt >= self.chips:
+            return PlayerAction.ALL_IN, self.chips
+        return PlayerAction.CALL, amt
 
 
 def _build_game(seed, n=3, chips=1000, big_blind=20, aggressiveness=0.4):
@@ -104,6 +118,26 @@ def test_events_cleared_per_hand_in_sim_mode():
     assert len(hand_starts) == 1
     assert hand_starts[0].data['hand_number'] == 2
     assert g.events[0].type == 'hand_started'
+
+
+def test_pot_structure_emitted_with_side_pots():
+    """A short-stacked all-in forces a main + side pot; the showdown emits one
+    pot_structure event describing both."""
+    random.seed(0)
+    g = Game(big_blind=100, live_output=False)
+    # p0's 60 chips can't cover the 100 BB, so it's all-in for 60 preflop while
+    # the two deep stacks equalize at 100 → one main pot + one side pot.
+    g.add_player(CallingPlayer("p0", "Player0", 60))
+    g.add_player(CallingPlayer("p1", "Player1", 1000))
+    g.add_player(CallingPlayer("p2", "Player2", 1000))
+    g.start_game()
+
+    structures = [e for e in g.events if e.type == 'pot_structure']
+    assert len(structures) == 1
+    pots = structures[0].data['pots']
+    assert len(pots) == 2
+    assert pots[0]['label'] == 'Main Pot'
+    assert pots[1]['label'] == 'Side Pot 1'
 
 
 def test_event_to_dict():

@@ -634,6 +634,13 @@ class Game:
                 eligible_names = ', '.join(
                     id_to_name.get(pid, pid) for pid in sorted(pot.eligible_players))
                 self.log(f"  {label}: {pot.amount}  (eligible: {eligible_names})")
+            self.emit('pot_structure', pots=[
+                {"label": "Main Pot" if i == 0 else f"Side Pot {i}",
+                 "amount": pot.amount,
+                 "eligible_names": [id_to_name.get(pid, pid)
+                                    for pid in sorted(pot.eligible_players)]}
+                for i, pot in enumerate(self.pot_manager.pots)
+            ])
 
         # Distribute pots using ShowdownHandler
         self._last_hand_result = self.showdown_handler.distribute_pots(
