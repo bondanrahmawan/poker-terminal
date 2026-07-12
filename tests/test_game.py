@@ -458,5 +458,38 @@ class TestGameState:
         assert g.state == GameState.WAITING
 
 
+class TestPreriverLeaderForTilt:
+    """Was pre-river leader is computed correctly and drives the tilt bad-beat bump."""
+
+    def test_rivered_favorite_gets_bad_beat_tilt_bump(self):
+        from strategies.engine import BalancedStrategy
+
+        g = Game(big_blind=20)
+        a = BotPlayer("pA", "A", 1000, BalancedStrategy())
+        b = BotPlayer("pB", "B", 1000, BalancedStrategy())
+        g.add_player(a)
+        g.add_player(b)
+
+        # A flops trip nines (way ahead); B only completes a straight on the
+        # river (3-4-5-6-7), rivering the pot away from A — a classic bad beat.
+        a.hole_cards = [Card(Rank.NINE, Suit.SPADES), Card(Rank.NINE, Suit.DIAMONDS)]
+        b.hole_cards = [Card(Rank.FIVE, Suit.DIAMONDS), Card(Rank.SIX, Suit.DIAMONDS)]
+        g.community_cards = [
+            Card(Rank.NINE, Suit.HEARTS), Card(Rank.TWO, Suit.CLUBS),
+            Card(Rank.THREE, Suit.DIAMONDS), Card(Rank.SEVEN, Suit.SPADES),
+            Card(Rank.FOUR, Suit.HEARTS),
+        ]
+        g.pot_manager.add_contribution("pA", 100)
+        g.pot_manager.add_contribution("pB", 100)
+
+        g._handle_showdown()
+        assert g._preriver_leader == "pA"
+        assert "pB" in g._last_hand_result.winners  # straight beats trips
+
+        prev_tilt = a.strategy.tilt.tilt_level
+        g._handle_end()
+        assert a.strategy.tilt.tilt_level - prev_tilt == pytest.approx(0.15)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

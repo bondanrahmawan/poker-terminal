@@ -385,6 +385,24 @@ Each phase is independently shippable and ends with a benchmark run
    (B12); make `choose_bet_size`/`choose_raise_size` return a single
    `Decision` type instead of mixed tuples (B9).
 
+**Phase 1 implemented 2026-07-12** — per `notes/bot_fix_phase1.md` (Tasks
+1–8), full test suite green, benchmark smoke run and manual web-game hands
+verified (Task 10). Deviations from this section's sketch:
+
+- **B6 (`was_favorite`)**: implemented as a deterministic hand-strength
+  comparison (`HandEvaluator.evaluate` on hole + flop/turn, no river) rather
+  than the Monte-Carlo-equity-at-river sketch above — cheaper (one extra
+  5-card-combo evaluation per showdown participant, no trials) and sufficient
+  to catch the classic "rivered" bad beat, per `bot_fix_phase1.md` Task 6.
+- **B9 (bet-sizing return type)**: unified on `Optional[tuple]` — `(BetSize,
+  amount)` or `None` for "no bet, caller decides check/fold" — rather than a
+  new `Decision` dataclass; smaller diff, same effect (callers now branch on
+  `is not None` instead of `isinstance(amt, int)`).
+- **B10** (`record_missed_opportunity`): left unwired, as `bot_fix_phase1.md`
+  Task 2 explicitly calls out that real per-street `record_action` calls
+  already grow the VPIP denominator correctly; wiring the extra method would
+  be redundant.
+
 ### Phase 2 — Mistake-based difficulty (Section 7 table)
 
 Add `MistakeProfile` per level; keep API/labels unchanged (easy/normal/hard,

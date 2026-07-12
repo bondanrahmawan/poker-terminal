@@ -147,32 +147,44 @@ def _has_open_ended(board_ranks: List[int], hole_ranks: List[int]) -> bool:
     return False
 
 
+def _gutshot_scan_ranks(board_ranks: List[int], hole_ranks: List[int]) -> Tuple[List[int], set]:
+    """Build the rank set (with ace also scanned low for wheel gutshots) and
+    the set of hole ranks to test window membership against."""
+    all_ranks = set(board_ranks) | set(hole_ranks)
+    hole_scan = set(hole_ranks)
+    if 14 in all_ranks:
+        all_ranks.add(1)
+    if 14 in hole_scan:
+        hole_scan.add(1)
+    return sorted(all_ranks), hole_scan
+
+
+def _gutshot_missing_ranks(scan_ranks: List[int], hole_scan: set) -> set:
+    """Missing ranks of every 4-distinct-rank, span-4 (one internal gap)
+    window that includes at least one hole card."""
+    missing = set()
+    for i in range(len(scan_ranks) - 3):
+        window = scan_ranks[i:i+4]
+        if window[3] - window[0] == 4 and any(r in hole_scan for r in window):
+            gap = set(range(window[0], window[3] + 1)) - set(window)
+            if len(gap) == 1:
+                missing.add(next(iter(gap)))
+    return missing
+
+
 def _has_gutshot(board_ranks: List[int], hole_ranks: List[int]) -> bool:
-    """Check if player has 4 consecutive ranks missing exactly one inside card."""
-    all_ranks = sorted(set(board_ranks + hole_ranks))
-    # Look for sequences of 4 ranks with exactly 1 gap
-    for i in range(len(all_ranks) - 3):
-        window = all_ranks[i:i+4]
-        span = window[3] - window[0]
-        if span == 5 and len(window) == 4:
-            # Exactly one rank missing in a 5-rank span → gutshot
-            if any(r in hole_ranks for r in window):
-                return True
-    return False
+    """4 distinct ranks spanning exactly 4 (one internal rank missing),
+    using at least one hole card, and not already an open-ended draw."""
+    if _has_open_ended(board_ranks, hole_ranks):
+        return False
+    scan_ranks, hole_scan = _gutshot_scan_ranks(board_ranks, hole_ranks)
+    return len(_gutshot_missing_ranks(scan_ranks, hole_scan)) >= 1
 
 
 def _has_double_gutshot(board_ranks: List[int], hole_ranks: List[int]) -> bool:
-    """Two separate gutshots = 8 outs (e.g., holding 8 on board 6-9-T)."""
-    # Count gutshot opportunities; 2+ = double gutshot
-    count = 0
-    all_ranks = sorted(set(board_ranks))
-    for hr in hole_ranks:
-        test_ranks = sorted(set(all_ranks + [hr]))
-        for i in range(len(test_ranks) - 3):
-            window = test_ranks[i:i+4]
-            if window[3] - window[0] == 5 and len(window) == 4:
-                count += 1
-    return count >= 2
+    """Two distinct gutshot windows with two different missing ranks (8 outs)."""
+    scan_ranks, hole_scan = _gutshot_scan_ranks(board_ranks, hole_ranks)
+    return len(_gutshot_missing_ranks(scan_ranks, hole_scan)) >= 2
 
 
 def _has_backdoor_straight(board_ranks: List[int], hole_ranks: List[int]) -> bool:

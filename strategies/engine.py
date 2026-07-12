@@ -84,21 +84,25 @@ class DesignedBotStrategy(BotStrategy):
         # Per-hand state
         self._big_blind = 20  # default; updated from game_state if available
         self._position  = 'MP'
+        self._event_cursor = -1
 
     # ── Public interface ─────────────────────────────────────────────────────
 
     def decide(self, game_state: dict, player: PlayerView) -> Tuple[PlayerAction, int]:
         community = game_state.get('community_cards', [])
-        players_info = game_state.get('players_info', [])
-        bot_name = game_state.get('players_info', [['']])[0][0] if players_info else ''
+        self._bot_name = game_state.get('self_name', '')
         position_idx = game_state.get('position', 0)
         num_active = game_state.get('num_active', 4)
 
         # Update big blind from min_raise (usually equals BB)
         self._big_blind = game_state.get('min_raise', self._big_blind)
 
-        # Map position index to label
-        self._position = self._position_label(position_idx, num_active)
+        # Prefer the engine's real position label; fall back to the index
+        # guess only when it's not supplied (e.g. in tests).
+        player_role = game_state.get('player_role') or None
+        if player_role == 'BTN/SB':
+            player_role = 'BTN'
+        self._position = player_role or self._position_label(position_idx, num_active)
 
         if not community:
             return self._decide_preflop(game_state, player)
@@ -122,28 +126,23 @@ class DesignedBotStrategy(BotStrategy):
     # ── Record opponent actions for modeling ─────────────────────────────────
 
     def _record_opponent_actions(self, game_state: dict):
-        """Scan hand_log to record recent opponent actions."""
-        hand_log = game_state.get('hand_log', [])
-        players_info = game_state.get('players_info', [])
-        player_names = [p[0] for p in players_info] if players_info else []
+        """Consume structured action_taken events to record opponent actions."""
+        events = game_state.get('events', [])
+        self_id = game_state.get('self_id', '')
 
-        # Parse recent log entries for opponent actions
-        for entry in hand_log[-20:]:  # last 20 entries
-            parts = entry.strip().split()
-            if len(parts) < 2:
+        for event in events:
+            if event.seq <= self._event_cursor:
                 continue
-            name = parts[0]
-            if name not in player_names or name == getattr(self, '_bot_name', ''):
+            self._event_cursor = event.seq
+            if event.type != 'action_taken':
                 continue
-            action = parts[1].lower() if len(parts) > 1 else ''
-            if 'fold' in action:
-                self.tracker.record_action(name, 'fold', 'preflop')
-            elif 'check' in action:
-                self.tracker.record_action(name, 'check', 'preflop')
-            elif 'call' in action:
-                self.tracker.record_action(name, 'call', 'preflop')
-            elif 'raise' in action or 'all-in' in action or 'all_in' in action:
-                self.tracker.record_action(name, 'raise', 'preflop')
+            data = event.data
+            if data['player_id'] == self_id or data['name'] == self._bot_name:
+                continue
+            action = data['action']
+            if action == 'all-in':
+                action = 'raise'
+            self.tracker.record_action(data['name'], action, data['street'])
 
     # ── Preflop ──────────────────────────────────────────────────────────────
 
@@ -156,16 +155,21 @@ class DesignedBotStrategy(BotStrategy):
         pot_size  = game_state.get('pot_size', 0)
         players_info = game_state.get('players_info', [])
         hand_log = game_state.get('hand_log', [])
+        big_blind = game_state.get('big_blind', self._big_blind)
+        current_bet = game_state.get('current_bet', big_blind)
 
         # Record opponent actions
         self._record_opponent_actions(game_state)
 
         # Get opponent IDs for exploitation
-        opponent_ids = _extract_opponent_ids(players_info, '')
+        opponent_ids = _extract_opponent_ids(players_info, self._bot_name)
         exploit = self.tracker.exploit_adjustment(opponent_ids)
 
+        # No voluntary raise yet this street (BB's blind is not a "raise").
+        unopened = current_bet <= big_blind
+
         # Position-aware range
-        range_label = position_to_range(self._position, is_opening=(min_call == 0))
+        range_label = position_to_range(self._position, is_opening=unopened)
         in_range = hand_in_range(*player.hole_cards, range_label)
 
         # Hand score with noise
@@ -176,8 +180,8 @@ class DesignedBotStrategy(BotStrategy):
         raw_score = score_starting_hand(*player.hole_cards)
         is_premium = raw_score >= 90
 
-        # ── Facing a raise (min_call > 0) ──
-        if min_call > 0:
+        # ── Facing a raise (someone has voluntarily raised this street) ──
+        if min_call > 0 and not unopened:
             # Consider 3-betting
             do_3bet, is_value, is_bluff = should_3bet(
                 *player.hole_cards, range_label, self.profile.aggression
@@ -198,11 +202,18 @@ class DesignedBotStrategy(BotStrategy):
             if in_range or score >= threshold - 10 or is_premium:
                 if random.random() < self.profile.call_freq + exploit['equity_boost']:
                     return self._make_call(player.chips, min_call)
+            self.image.record_preflop_fold()
             return PlayerAction.FOLD, 0
 
-        # ── Opening (min_call == 0): the big-blind option. With nothing to
-        # call, a weak hand checks its option instead of folding for free. ──
+        # ── Opening / limping into an unopened pot. This covers the BB's
+        # own option (min_call == 0) as well as every other seat still
+        # only owing the blind (min_call > 0, nobody has raised yet). With
+        # nothing raised, a weak hand checks its option if free, else folds
+        # rather than paying to enter with a bad hand. ──
         if not in_range and score < threshold and not is_premium:
+            if min_call > 0:
+                self.image.record_preflop_fold()
+                return PlayerAction.FOLD, 0
             return PlayerAction.CHECK, 0
 
         self.image.record_preflop_enter()
@@ -243,7 +254,10 @@ class DesignedBotStrategy(BotStrategy):
         if self._position in ('BTN', 'CO', 'SB') and random.random() < 0.15:
             return self._make_call(player.chips, min_call)
 
-        # Nothing to call → check the option rather than fold for free.
+        # Otherwise: limp in if a blind is still owed, else check the option
+        # rather than fold for free.
+        if min_call > 0:
+            return self._make_call(player.chips, min_call)
         return PlayerAction.CHECK, 0
 
     # ── Postflop ─────────────────────────────────────────────────────────────
@@ -265,7 +279,7 @@ class DesignedBotStrategy(BotStrategy):
         self._record_opponent_actions(game_state)
 
         # Opponent IDs and exploitation
-        opponent_ids = _extract_opponent_ids(players_info, '')
+        opponent_ids = _extract_opponent_ids(players_info, self._bot_name)
         exploit = self.tracker.exploit_adjustment(opponent_ids)
         fold_equity = self.tracker.opponent_fold_equity(opponent_ids)
 
@@ -279,10 +293,11 @@ class DesignedBotStrategy(BotStrategy):
         else:
             raw_equity = advanced_equity(player.hole_cards, community, num_active - 1)
         equity = self._noisy_equity(raw_equity)
-        # Add fold equity
-        equity += fold_equity
         equity += exploit['equity_boost']
         equity = min(1.0, max(0.0, equity))
+        # Fold equity (opponents folding to *our* bet) only applies when we're
+        # betting/raising — it must not rescue a bad pot-odds call.
+        bet_equity = min(1.0, equity + fold_equity)
 
         # Pot odds
         odds = self._noisy_odds(pot_odds(min_call, pot_size))
@@ -335,12 +350,12 @@ class DesignedBotStrategy(BotStrategy):
         if min_call > 0:
             # Semi-bluff raise with strong draws
             if is_draw and should_semi_bluff(
-                equity, eff_aggression, is_draw, is_strong_draw,
+                bet_equity, eff_aggression, is_draw, is_strong_draw,
                 odds, opp_folds_often
             ):
                 self.image.record_raise()
-                size, amt = choose_raise_size(
-                    pot_size, min_call, min_raise, player.chips, equity,
+                result = choose_raise_size(
+                    pot_size, min_call, min_raise, player.chips, bet_equity,
                     is_draw=is_draw, is_strong_draw=is_strong_draw,
                     is_made_hand=is_made_hand, is_strong_made=is_strong_made,
                     opponent_folds_often=opp_folds_often,
@@ -349,23 +364,23 @@ class DesignedBotStrategy(BotStrategy):
                     aggression=eff_aggression,
                     is_semi_bluff=True,
                 )
-                if isinstance(amt, int):
-                    self.image.record_raise()
+                if result is not None:
+                    size, amt = result
                     return self._action_raise_or_all_in(amt, player.chips)
-                # If choose_raise_size returned a check/call/fold tuple
-                return amt if isinstance(amt, tuple) else (PlayerAction.FOLD, 0)
+                return PlayerAction.FOLD, 0
 
             # Value raise with strong hands
             if is_strong_made and random.random() < eff_aggression:
-                size, amt = choose_raise_size(
-                    pot_size, min_call, min_raise, player.chips, equity,
+                result = choose_raise_size(
+                    pot_size, min_call, min_raise, player.chips, bet_equity,
                     is_made_hand=True, is_strong_made=True,
                     opponent_folds_often=opp_folds_often,
                     opponent_calls_often=opp_calls_often,
                     stack_depth=stack_depth,
                     aggression=eff_aggression,
                 )
-                if isinstance(amt, int):
+                if result is not None:
+                    size, amt = result
                     self.image.record_raise()
                     return self._action_raise_or_all_in(amt, player.chips)
 
@@ -384,35 +399,36 @@ class DesignedBotStrategy(BotStrategy):
         # ── No bet to face (can check or bet) ──
         # Bluff
         if self._should_bluff_v2(community, hand_log, equity, eff_bluff, opp_folds_often):
-            self.image.record_raise()
-            size, amt = choose_bet_size(
-                pot_size, min_call, min_raise, player.chips, equity,
+            result = choose_bet_size(
+                pot_size, min_call, min_raise, player.chips, bet_equity,
                 is_bluff=True, opponent_folds_often=opp_folds_often,
                 stack_depth=stack_depth, aggression=eff_aggression,
             )
-            if isinstance(amt, int):
+            if result is not None:
+                size, amt = result
+                self.image.record_raise()
                 return self._action_raise_or_all_in(amt, player.chips)
 
         # Semi-bluff bet with draws
         if is_draw and should_semi_bluff(
-            equity, eff_aggression, is_draw, is_strong_draw,
+            bet_equity, eff_aggression, is_draw, is_strong_draw,
             odds, opp_folds_often
         ):
-            self.image.record_raise()
-            size, amt = choose_bet_size(
-                pot_size, min_call, min_raise, player.chips, equity,
+            result = choose_bet_size(
+                pot_size, min_call, min_raise, player.chips, bet_equity,
                 is_draw=is_draw, is_strong_draw=is_strong_draw,
                 is_semi_bluff=True, opponent_folds_often=opp_folds_often,
                 stack_depth=stack_depth, aggression=eff_aggression,
             )
-            if isinstance(amt, int):
+            if result is not None:
+                size, amt = result
+                self.image.record_raise()
                 return self._action_raise_or_all_in(amt, player.chips)
 
         # Value bet (skip if slow-playing)
         if is_made_hand and equity >= 0.45 and not is_slow_playing:
-            self.image.record_raise()
-            size, amt = choose_bet_size(
-                pot_size, min_call, min_raise, player.chips, equity,
+            result = choose_bet_size(
+                pot_size, min_call, min_raise, player.chips, bet_equity,
                 is_made_hand=is_made_hand, is_strong_made=is_strong_made,
                 board_scary=_is_board_scary(community),
                 opponent_folds_often=opp_folds_often,
@@ -420,7 +436,9 @@ class DesignedBotStrategy(BotStrategy):
                 stack_depth=stack_depth,
                 aggression=eff_aggression,
             )
-            if isinstance(amt, int):
+            if result is not None:
+                size, amt = result
+                self.image.record_raise()
                 return self._action_raise_or_all_in(amt, player.chips)
 
         # Check

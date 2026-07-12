@@ -7,12 +7,14 @@ Run with: pytest tests/test_enhanced_strategies.py -v
 import pytest
 from core.card import Card, Suit, Rank
 from core.player import PlayerAction
+from core.events import GameEvent
 from strategies import PlayerView, REGISTRY
 from strategies.engine import (
     DesignedBotStrategy,
     TightPassiveStrategy, TightAggressiveStrategy,
     LoosePassiveStrategy, LooseAggressiveStrategy,
     ManiacStrategy, NitStrategy, BalancedStrategy,
+    _extract_opponent_ids,
 )
 from strategies.profile import PROFILES
 from strategies.hand_score import score_starting_hand
@@ -44,7 +46,9 @@ def make_view(chips=1000, hole_cards=None):
 
 
 def state(min_call=0, min_raise=20, pot_size=100, community_cards=None,
-          position=0, num_active=4, players_info=None, hand_log=None):
+          position=0, num_active=4, players_info=None, hand_log=None,
+          self_id=None, self_name=None, events=None, player_role=None,
+          big_blind=20, current_bet=None):
     return {
         'min_call': min_call,
         'min_raise': min_raise,
@@ -54,6 +58,13 @@ def state(min_call=0, min_raise=20, pot_size=100, community_cards=None,
         'num_active': num_active,
         'players_info': players_info or [],
         'hand_log': hand_log or [],
+        'self_id': self_id,
+        'self_name': self_name,
+        'events': events or [],
+        'player_role': player_role,
+        'big_blind': big_blind,
+        'current_bet': current_bet if current_bet is not None else
+                        (big_blind if min_call == 0 else big_blind + min_call),
     }
 
 
@@ -223,6 +234,60 @@ class TestDrawDetection:
         assert draw.total_outs > 0
 
 
+class TestGutshotDetection:
+    """Table-driven cases for the corrected gutshot/double-gutshot span (Task 5)."""
+
+    def test_gutshot_span_four_missing_one(self):
+        # hole 8s9d, board 5h6cKd -> ranks 5,6,8,9 (span 4, missing 7)
+        hole = [Card(Rank.EIGHT, Suit.SPADES), Card(Rank.NINE, Suit.DIAMONDS)]
+        board = [Card(Rank.FIVE, Suit.HEARTS), Card(Rank.SIX, Suit.CLUBS),
+                 Card(Rank.KING, Suit.DIAMONDS)]
+        draw = detect_draws(hole, board)
+        assert draw.gutshot_straight_draw is True
+
+    def test_two_gap_span_five_is_not_a_gutshot(self):
+        # hole 5s6d, board 8h10cKd -> ranks 5,6,8,10 (span 5, two gaps)
+        hole = [Card(Rank.FIVE, Suit.SPADES), Card(Rank.SIX, Suit.DIAMONDS)]
+        board = [Card(Rank.EIGHT, Suit.HEARTS), Card(Rank.TEN, Suit.CLUBS),
+                 Card(Rank.KING, Suit.DIAMONDS)]
+        draw = detect_draws(hole, board)
+        assert draw.gutshot_straight_draw is False
+
+    def test_wheel_gutshot(self):
+        # hole As2d, board 3h5cKd -> needs the 4 (wheel gutshot)
+        hole = [Card(Rank.ACE, Suit.SPADES), Card(Rank.TWO, Suit.DIAMONDS)]
+        board = [Card(Rank.THREE, Suit.HEARTS), Card(Rank.FIVE, Suit.CLUBS),
+                 Card(Rank.KING, Suit.DIAMONDS)]
+        draw = detect_draws(hole, board)
+        assert draw.gutshot_straight_draw is True
+
+    def test_gutshot_missing_middle_rank(self):
+        # hole 9s10d, board 6h7cKd -> ranks 6,7,9,10 (missing 8)
+        hole = [Card(Rank.NINE, Suit.SPADES), Card(Rank.TEN, Suit.DIAMONDS)]
+        board = [Card(Rank.SIX, Suit.HEARTS), Card(Rank.SEVEN, Suit.CLUBS),
+                 Card(Rank.KING, Suit.DIAMONDS)]
+        draw = detect_draws(hole, board)
+        assert draw.gutshot_straight_draw is True
+
+    def test_open_ended_is_not_also_a_gutshot(self):
+        # hole Js10d, board 9h8cKd -> 8-9-10-J -> open-ended, not a gutshot
+        hole = [Card(Rank.JACK, Suit.SPADES), Card(Rank.TEN, Suit.DIAMONDS)]
+        board = [Card(Rank.NINE, Suit.HEARTS), Card(Rank.EIGHT, Suit.CLUBS),
+                 Card(Rank.KING, Suit.DIAMONDS)]
+        draw = detect_draws(hole, board)
+        assert draw.open_ended_straight_draw is True
+        assert draw.gutshot_straight_draw is False
+
+    def test_double_gutshot(self):
+        # hole 10s9d, board 6h8cQd -> 7 completes 6-7-8-9-10, J completes 8-9-10-J-Q
+        hole = [Card(Rank.TEN, Suit.SPADES), Card(Rank.NINE, Suit.DIAMONDS)]
+        board = [Card(Rank.SIX, Suit.HEARTS), Card(Rank.EIGHT, Suit.CLUBS),
+                 Card(Rank.QUEEN, Suit.DIAMONDS)]
+        draw = detect_draws(hole, board)
+        assert draw.double_gutshot is True
+        assert draw.straight_draw_outs == 8
+
+
 class TestAdvancedEquity:
     def test_preflop_strong(self):
         eq = advanced_equity(STRONG_HAND, [])
@@ -307,14 +372,14 @@ class TestBetSizing:
         )
         assert amt > 0
 
-    def test_choose_bet_size_slow_play(self):
+    def test_choose_bet_size_no_clear_hand_returns_none(self):
+        # Slow-playing is now handled by the engine before ever calling this
+        # helper (Task 8); with no made hand/draw/bluff flags set it just
+        # signals "no bet" via None so the caller falls through to check/fold.
         result = choose_bet_size(
-            pot_size=200, min_call=0, min_raise=20, chips=1000,
-            equity=0.85, is_made_hand=True, is_strong_made=True,
-            is_slow_play=True, aggression=0.3,
+            pot_size=200, min_call=0, min_raise=20, chips=1000, equity=0.30,
         )
-        # Should return check when no call needed
-        assert result[0] == PlayerAction.CHECK
+        assert result is None
 
     def test_stack_depth_label(self):
         assert stack_depth_label(50, 20) == 'short'    # 2.5 BB
@@ -595,6 +660,191 @@ class TestEnhancedStrategies:
         for s in strategies:
             _, amt = s.decide(gs, view)
             assert amt <= 100, f"{s.__class__.__name__} bet more than chips"
+
+
+# ---------------------------------------------------------------------------
+# Bot identity (self_id / self_name wiring)
+# ---------------------------------------------------------------------------
+
+class TestBotIdentity:
+    def test_own_actions_not_recorded_as_opponent(self):
+        strategy = BalancedStrategy()
+        players_info = [('Bot1', 1000, True), ('Opp1', 1000, True), ('Opp2', 1000, True)]
+        events = [
+            GameEvent(0, 'action_taken', dict(player_id='p_opp1', name='Opp1',
+                      action='call', amount=20, street='preflop')),
+            GameEvent(1, 'action_taken', dict(player_id='p_opp2', name='Opp2',
+                      action='fold', amount=0, street='preflop')),
+            GameEvent(2, 'action_taken', dict(player_id='p_bot1', name='Bot1',
+                      action='raise', amount=60, street='preflop')),
+        ]
+        gs = state(min_call=50, pot_size=100, players_info=players_info,
+                   events=events, self_id='p_bot1', self_name='Bot1',
+                   position=1)
+        for _ in range(3):
+            strategy.decide(gs, make_view(hole_cards=MEDIUM_HAND))
+
+        assert strategy.tracker.get_stats('Bot1').total_hands_seen == 0
+        assert strategy.tracker.get_stats('Opp1').total_hands_seen > 0
+        assert strategy.tracker.get_stats('Opp2').total_hands_seen > 0
+
+    def test_exploit_adjustment_excludes_self(self):
+        opponent_ids = _extract_opponent_ids(
+            [('Bot1', 1000, True), ('Opp1', 1000, True), ('Opp2', 1000, True)],
+            'Bot1',
+        )
+        assert opponent_ids == ['Opp1', 'Opp2']
+
+
+# ---------------------------------------------------------------------------
+# Structured event consumption (cursor + real streets)
+# ---------------------------------------------------------------------------
+
+class TestRecordOpponentActionsFromEvents:
+    def test_events_counted_once_and_street_respected(self):
+        strategy = BalancedStrategy()
+        events = [
+            GameEvent(0, 'action_taken', dict(player_id='p_opp1', name='Opp1',
+                      action='fold', amount=0, street='preflop')),
+            GameEvent(1, 'action_taken', dict(player_id='p_opp1', name='Opp1',
+                      action='fold', amount=0, street='flop')),
+            GameEvent(2, 'action_taken', dict(player_id='p_opp2', name='Opp2',
+                      action='call', amount=20, street='flop')),
+            GameEvent(3, 'action_taken', dict(player_id='p_bot1', name='Bot1',
+                      action='call', amount=20, street='flop')),
+        ]
+        gs = state(min_call=0, pot_size=100, players_info=[
+            ('Bot1', 1000, True), ('Opp1', 1000, True), ('Opp2', 1000, True)],
+            events=events, self_id='p_bot1', self_name='Bot1')
+
+        strategy.decide(gs, make_view(hole_cards=MEDIUM_HAND))
+        strategy.decide(gs, make_view(hole_cards=MEDIUM_HAND))  # same events again
+
+        opp1 = strategy.tracker.get_stats('Opp1')
+        assert opp1.total_hands_seen == 2  # each event counted exactly once
+        assert opp1.bets_faced == 1
+        assert opp1.folds_to_bet == 1
+        assert strategy.tracker.get_stats('Bot1').total_hands_seen == 0
+
+    def test_integration_fold_to_bet_populated(self):
+        import random
+        from core.game import Game
+        from players.bot import BotPlayer
+        from strategies.engine import BalancedStrategy as BS
+
+        random.seed(123)
+        game = Game(big_blind=20, seed=42, blind_reset_interval=20)
+        for i in range(3):
+            game.add_player(BotPlayer(f'p{i}', f'Bot{i}', 1000, BS(difficulty=1.0)))
+
+        for _ in range(60):
+            game.start_game()
+
+        found_fold_to_bet = False
+        for p in game.players:
+            for oid, stats in p.strategy.tracker.get_all_stats().items():
+                if stats.bets_faced > 0 and stats.fold_to_bet > 0:
+                    found_fold_to_bet = True
+        assert found_fold_to_bet
+
+
+# ---------------------------------------------------------------------------
+# Fold equity must not rescue a bad pot-odds call (Task 7)
+# ---------------------------------------------------------------------------
+
+class TestFoldEquityNotAddedToCallDecision:
+    def _make_strategy_with_foldy_opponent(self):
+        strategy = BalancedStrategy(difficulty=1.0)  # no noise
+        for _ in range(10):
+            strategy.tracker.record_action('Opp', 'fold', 'flop')
+        return strategy
+
+    def test_facing_bet_still_folds_below_pot_odds(self):
+        strategy = self._make_strategy_with_foldy_opponent()
+        # One pair, no draw: raw equity 0.42, +0.05 calling-station equity_boost
+        # = 0.47. Fold equity here is 0.15, which would push the old buggy
+        # equity to 0.62 -- above the ~0.545 pot odds below -- and wrongly call.
+        hole = [Card(Rank.NINE, Suit.SPADES), Card(Rank.TWO, Suit.HEARTS)]
+        board = [Card(Rank.NINE, Suit.CLUBS), Card(Rank.FIVE, Suit.DIAMONDS),
+                 Card(Rank.KING, Suit.DIAMONDS)]
+        gs = state(min_call=120, pot_size=100, community_cards=board,
+                   num_active=2,
+                   players_info=[('Bot1', 1000, True), ('Opp', 1000, True)],
+                   self_id='p_bot1', self_name='Bot1')
+        action, amt = strategy.decide(gs, make_view(chips=1000, hole_cards=hole))
+        assert action == PlayerAction.FOLD
+
+    def test_no_bet_to_face_still_bets_with_made_hand(self):
+        strategy = self._make_strategy_with_foldy_opponent()
+        hole = [Card(Rank.NINE, Suit.SPADES), Card(Rank.TWO, Suit.HEARTS)]
+        board = [Card(Rank.NINE, Suit.CLUBS), Card(Rank.FIVE, Suit.DIAMONDS),
+                 Card(Rank.KING, Suit.DIAMONDS)]
+        gs = state(min_call=0, pot_size=100, community_cards=board,
+                   num_active=2,
+                   players_info=[('Bot1', 1000, True), ('Opp', 1000, True)],
+                   self_id='p_bot1', self_name='Bot1')
+        bets = sum(1 for _ in range(50)
+                   if strategy.decide(gs, make_view(chips=1000, hole_cards=hole))[0]
+                   in (PlayerAction.RAISE, PlayerAction.ALL_IN))
+        assert bets > 0
+
+
+# ---------------------------------------------------------------------------
+# Preflop opening logic routed through position-aware ranges (Task 3)
+# ---------------------------------------------------------------------------
+
+class TestPreflopOpeningRoutedByPosition:
+    def test_btn_enters_wider_than_utg(self):
+        import random
+        big_blind = 20
+        gs_kwargs = dict(min_call=big_blind, min_raise=big_blind, pot_size=30,
+                          big_blind=big_blind, current_bet=big_blind)
+
+        # All 169 canonical starting hands (13 pairs, 78 suited, 78 offsuit),
+        # sampled uniformly — a representative mix rather than a fixed-suit
+        # bias that would exclude suited hands entirely.
+        ranks = sorted(Rank.get_all(), reverse=True)
+        canonical_hands = []
+        for i, r1 in enumerate(ranks):
+            for r2 in ranks[i:]:
+                if r1 == r2:
+                    canonical_hands.append((Card(r1, Suit.SPADES), Card(r2, Suit.HEARTS)))
+                else:
+                    canonical_hands.append((Card(r1, Suit.SPADES), Card(r2, Suit.HEARTS)))
+                    canonical_hands.append((Card(r1, Suit.SPADES), Card(r2, Suit.SPADES)))
+
+        def entry_rate(role):
+            entries = 0
+            trials = 2000
+            for _ in range(trials):
+                strategy = BalancedStrategy(difficulty=1.0)  # no noise
+                hole = list(random.choice(canonical_hands))
+                gs = state(player_role=role, **gs_kwargs)
+                action, _ = strategy.decide(gs, make_view(hole_cards=hole))
+                if action != PlayerAction.FOLD:
+                    entries += 1
+            return entries / trials
+
+        random.seed(7)
+        btn_rate = entry_rate('BTN')
+        utg_rate = entry_rate('UTG')
+        assert btn_rate >= 1.5 * utg_rate
+
+
+# ---------------------------------------------------------------------------
+# Preflop folds recorded into TableImage (Task 4)
+# ---------------------------------------------------------------------------
+
+class TestPreflopFoldRecordedInImage:
+    def test_nit_junk_hands_build_tight_image(self):
+        strategy = NitStrategy(difficulty=1.0)
+        junk_hand = [Card(Rank.SEVEN, Suit.CLUBS), Card(Rank.TWO, Suit.HEARTS)]
+        big_blind = 20
+        gs = state(min_call=big_blind, min_raise=big_blind, pot_size=30,
+                   player_role='UTG', big_blind=big_blind, current_bet=big_blind)
+        for _ in range(50):
+            strategy.decide(gs, make_view(hole_cards=junk_hand))
+        assert strategy.image.tightness > 0.7
 
 
 if __name__ == "__main__":

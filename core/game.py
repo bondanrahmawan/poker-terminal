@@ -89,6 +89,7 @@ class Game:
         
         # Last hand results (for bot notifications)
         self._last_hand_result: Optional[ShowdownResult] = None
+        self._preriver_leader: Optional[str] = None
 
         # Resumable-engine state (Phase 2)
         self._round_ctx: Optional[dict] = None       # per-betting-round loop state
@@ -238,6 +239,7 @@ class Game:
         self.street_investments = {}
         self._round_ctx = None
         self._round_started = False
+        self._preriver_leader = None
 
         # Keep the event list bounded in simulation mode (benchmarks run
         # hundreds of thousands of hands in a single Game instance).
@@ -479,7 +481,7 @@ class Game:
             self.fold_streets[p.player_id] = self.current_street
             self.emit('action_taken', player_id=p.player_id, name=p.name,
                       action='fold', amount=0, pot=self.pot_manager.total_pot(),
-                      all_in=False)
+                      all_in=False, street=self.current_street)
         else:
             actual_deducted = p.lose_chips(amt)
             if p.player_id in self.street_investments:
@@ -499,7 +501,8 @@ class Game:
             self.emit('action_taken', player_id=p.player_id, name=p.name,
                       action=action.value, amount=actual_deducted,
                       pot=self.pot_manager.total_pot(),
-                      all_in=(action == PlayerAction.ALL_IN))
+                      all_in=(action == PlayerAction.ALL_IN),
+                      street=self.current_street)
 
             if action == PlayerAction.ALL_IN:
                 self.log(f">> {p.name} is ALL-IN")
@@ -525,6 +528,10 @@ class Game:
             'num_active':     ctx['active_count'],
             'hand_log':       self.logs,
             'events':         self.events,
+            'self_id':        p.player_id,
+            'self_name':      p.name,
+            'big_blind':      self.big_blind,
+            'current_bet':    self.bet_manager.current_bet,
         }
 
     def _build_action_request(self, p: Player) -> ActionRequest:
@@ -600,6 +607,17 @@ class Game:
         if len(active_players) > 1:
             self.emit('showdown_started',
                       community=[c.to_dict() for c in self.community_cards])
+
+            # Who was ahead before the river, for tilt's bad-beat detection
+            # (cheap: one extra evaluation per player, no Monte Carlo).
+            from core.evaluator import HandEvaluator
+            preriver_community = self.community_cards[:4]
+            best_score = None
+            for p in active_players:
+                score, _ = HandEvaluator.evaluate(p.hole_cards, preriver_community)
+                if best_score is None or score > best_score:
+                    best_score = score
+                    self._preriver_leader = p.player_id
 
         # Show folded players
         folded = [(p, self.fold_streets.get(p.player_id, 'preflop'))
@@ -696,8 +714,7 @@ class Game:
                 if hasattr(p, 'record_hand_result'):
                     won = p.player_id in self._last_hand_result.winners
                     amount = self._last_hand_result.winnings.get(p.player_id, 0)
-                    # TODO: Track actual pre-showdown equity for accurate "was_favorite"
-                    was_fav = won  # Simplified placeholder
+                    was_fav = p.player_id == self._preriver_leader
                     p.record_hand_result(won, amount, was_fav)
 
         # Rotate dealer to next active player

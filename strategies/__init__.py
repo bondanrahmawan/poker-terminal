@@ -19,7 +19,8 @@ class BotStrategy(ABC):
     Receives:
       game_state — dict with keys:
         min_call, min_raise, pot_size, community_cards,
-        players_info, position, num_active, hand_log
+        players_info, position, num_active, hand_log,
+        self_id, self_name, events, player_role, big_blind, current_bet
       player — PlayerView snapshot (chips, hole_cards)
 
     Returns:

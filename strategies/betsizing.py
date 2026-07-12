@@ -88,28 +88,18 @@ def choose_bet_size(
     aggression: float = 0.5,
     is_bluff: bool = False,
     is_semi_bluff: bool = False,
-    is_slow_play: bool = False,
     num_opponents: int = 1,
-) -> tuple:
+) -> Optional[tuple]:
     """
     Choose the optimal bet size given the context.
 
     Returns:
-        (BetSize, amount) tuple
+        (BetSize, amount) tuple, or None if there's no clear hand to bet/raise
+        with (the caller falls through to its own check/fold logic).
     """
     # ── All-in when short-stacked ──
     if chips <= min_call + min_raise:
         return BetSize.ALL_IN, chips
-
-    # ── Slow-playing: check/call with strong hands ──
-    if is_slow_play and is_strong_made:
-        if min_call == 0:
-            from core.player import PlayerAction
-            return (PlayerAction.CHECK, 0)
-        else:
-            # Just call instead of raise
-            from core.player import PlayerAction
-            return (PlayerAction.CALL, min(chips, min_call))
 
     # ── Bluff sizing ──
     if is_bluff and not is_semi_bluff:
@@ -160,13 +150,8 @@ def choose_bet_size(
         amt = calc_bet_size(size, pot_size, min_call, min_raise, chips)
         return size, amt
 
-    # ── Default: no clear hand ──
-    if min_call == 0:
-        from core.player import PlayerAction
-        return (PlayerAction.CHECK, 0)
-    else:
-        from core.player import PlayerAction
-        return (PlayerAction.FOLD, 0)
+    # ── Default: no clear hand — let the caller check/fold ──
+    return None
 
 
 def choose_raise_size(
@@ -185,11 +170,10 @@ def choose_raise_size(
     aggression: float = 0.5,
     is_bluff: bool = False,
     is_semi_bluff: bool = False,
-    is_slow_play: bool = False,
-) -> tuple:
+) -> Optional[tuple]:
     """
     Choose raise size (as opposed to bet size — used when facing a bet).
-    Returns (BetSize, amount).
+    Returns (BetSize, amount), or None (see choose_bet_size).
     """
     return choose_bet_size(
         pot_size=pot_size,
@@ -208,7 +192,6 @@ def choose_raise_size(
         aggression=aggression,
         is_bluff=is_bluff,
         is_semi_bluff=is_semi_bluff,
-        is_slow_play=is_slow_play,
     )
 
 
