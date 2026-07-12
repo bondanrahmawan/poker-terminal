@@ -537,6 +537,15 @@ function statsInsights(rows) {
 function openHelp() { el("help-modal").classList.remove("hidden"); }
 function closeHelp() { el("help-modal").classList.add("hidden"); }
 
+// Section tabs: show one glossary section at a time instead of one long scroll.
+function showGlossTab(name) {
+  el("help-tabs").querySelectorAll("button").forEach((b) =>
+    b.classList.toggle("active", b.dataset.gtab === name));
+  el("help-body").querySelectorAll(".gloss-section").forEach((s) =>
+    s.classList.toggle("active", s.dataset.gsec === name));
+  el("help-box").scrollTop = 0;
+}
+
 function closeStats() {
   el("stats-modal").classList.add("hidden");
   if (statsThenQuit) {
@@ -1111,6 +1120,19 @@ function initSimpleMode() {
   });
 }
 
+// Show/hide the bot archetype label under each seat name (persisted, on by
+// default). Pure CSS switch via body.hide-styles.
+function initStylesToggle() {
+  const show = localStorage.getItem("poker.styles") !== "0";
+  const box = el("styles-toggle").querySelector("input");
+  box.checked = show;
+  document.body.classList.toggle("hide-styles", !show);
+  box.addEventListener("change", () => {
+    document.body.classList.toggle("hide-styles", !box.checked);
+    localStorage.setItem("poker.styles", box.checked ? "1" : "0");
+  });
+}
+
 // Light/dark theme: persisted, defaults to dark. Applied on <html> so the CSS
 // variable overrides cascade to everything.
 function initTheme() {
@@ -1490,11 +1512,15 @@ el("stats-modal").addEventListener("click", (e) => {
   if (e.target === el("stats-modal")) closeStats();
 });
 
-// Glossary / Help modal wiring: in-game button, ✕, backdrop click.
+// Glossary / Help modal wiring: in-game button, ✕, backdrop click, section tabs.
 el("help-btn").addEventListener("click", openHelp);
 el("help-close").addEventListener("click", closeHelp);
 el("help-modal").addEventListener("click", (e) => {
   if (e.target === el("help-modal")) closeHelp();
+});
+el("help-tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-gtab]");
+  if (btn) showGlossTab(btn.dataset.gtab);
 });
 
 // Keyboard shortcuts (V4). Driven by clicking the rendered buttons so all
@@ -1534,5 +1560,6 @@ document.addEventListener("keydown", (e) => {
 
 initHistoryToggle();
 initSimpleMode();
+initStylesToggle();
 initTheme();
 restoreSession();

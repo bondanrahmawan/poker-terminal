@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Poker Terminal</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext x='1' y='14' font-size='14'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
   <button id="theme-toggle" type="button" aria-label="Toggle light or dark theme" title="Toggle theme">🌙</button>
@@ -67,6 +67,7 @@
         <button id="help-btn" type="button" class="chip-btn">Help</button>
         <button id="stats-btn" type="button" class="chip-btn">Stats</button>
         <button id="quit-btn" type="button" class="chip-btn">Quit</button>
+        <label id="styles-toggle" class="inline"><input type="checkbox" checked /> Styles</label>
         <label id="simple-toggle" class="inline"><input type="checkbox" /> Simple view</label>
       </header>
       <div id="felt">
@@ -200,13 +201,24 @@
   <!-- ── Glossary / Help modal ────────────────────────────────────────────── -->
   <div id="help-modal" class="hidden">
     <div id="help-box">
-      <div id="help-head">
-        <span>Poker Glossary &amp; Help</span>
-        <button id="help-close" type="button" aria-label="Close">✕</button>
+      <div id="help-top">
+        <div id="help-head">
+          <span>Poker Glossary &amp; Help</span>
+          <button id="help-close" type="button" aria-label="Close">✕</button>
+        </div>
+        <div id="help-tabs">
+          <button type="button" class="chip-btn active" data-gtab="positions">Positions</button>
+          <button type="button" class="chip-btn" data-gtab="streets">Streets</button>
+          <button type="button" class="chip-btn" data-gtab="actions">Actions</button>
+          <button type="button" class="chip-btn" data-gtab="money">Money</button>
+          <button type="button" class="chip-btn" data-gtab="styles">Bot styles</button>
+          <button type="button" class="chip-btn" data-gtab="hands">Hands</button>
+          <button type="button" class="chip-btn" data-gtab="setup">Setup</button>
+        </div>
       </div>
       <div id="help-body">
 
-        <div class="gloss-section">
+        <div class="gloss-section active" data-gsec="positions">
           <h4>Table positions</h4>
           <p class="gloss-intro">Seats are named by where they sit relative to the dealer button. Acting later (more information) is an advantage.</p>
           <div class="gloss-row"><span class="gloss-term"><span class="badge">BTN</span></span><span class="gloss-def">Button — the dealer seat. Acts <em>last</em> after the flop: the best position.</span></div>
@@ -220,7 +232,7 @@
           <div class="gloss-row"><span class="gloss-term"><span class="badge allin">ALL-IN</span></span><span class="gloss-def">The player has put all of their chips into the pot.</span></div>
         </div>
 
-        <div class="gloss-section">
+        <div class="gloss-section" data-gsec="streets">
           <h4>Betting rounds (streets)</h4>
           <p class="gloss-intro">A hand plays out over four rounds as shared "community" cards are revealed.</p>
           <div class="gloss-row"><span class="gloss-term">Preflop</span><span class="gloss-def">You have your 2 hidden hole cards; no community cards yet. First round of betting.</span></div>
@@ -230,7 +242,7 @@
           <div class="gloss-row"><span class="gloss-term">Showdown</span><span class="gloss-def">Remaining players reveal their cards; the best 5-card hand wins the pot.</span></div>
         </div>
 
-        <div class="gloss-section">
+        <div class="gloss-section" data-gsec="actions">
           <h4>Actions</h4>
           <div class="gloss-row"><span class="gloss-term">Fold</span><span class="gloss-def">Give up the hand and any chips already in the pot.</span></div>
           <div class="gloss-row"><span class="gloss-term">Check</span><span class="gloss-def">Pass the action without betting — only possible when you owe nothing.</span></div>
@@ -240,7 +252,7 @@
           <div class="gloss-row"><span class="gloss-term">All-in</span><span class="gloss-def">Bet every chip you have left.</span></div>
         </div>
 
-        <div class="gloss-section">
+        <div class="gloss-section" data-gsec="money">
           <h4>Money &amp; the pot</h4>
           <div class="gloss-row"><span class="gloss-term">Blinds (SB / BB)</span><span class="gloss-def">Forced bets that seed the pot each hand, so there's always something to play for.</span></div>
           <div class="gloss-row"><span class="gloss-term">Ante</span><span class="gloss-def">An extra small forced bet from everyone, when enabled.</span></div>
@@ -251,7 +263,7 @@
           <div class="gloss-row"><span class="gloss-term">Stack</span><span class="gloss-def">The chips you have left in front of you.</span></div>
         </div>
 
-        <div class="gloss-section">
+        <div class="gloss-section" data-gsec="styles">
           <h4>Bot playing styles</h4>
           <p class="gloss-intro">Each bot's label describes how it plays. <em>Tight/loose</em> = how many hands it plays; <em>passive/aggressive</em> = how often it bets &amp; raises vs. just calls.</p>
           <div class="gloss-row"><span class="gloss-term">tight_passive</span><span class="gloss-def">Plays few hands and rarely raises — a cautious "rock".</span></div>
@@ -264,7 +276,7 @@
           <div class="gloss-row"><span class="gloss-term">trapper</span><span class="gloss-def">Plays strong hands slowly to lure you into betting (slow-play).</span></div>
         </div>
 
-        <div class="gloss-section">
+        <div class="gloss-section" data-gsec="hands">
           <h4>Hand rankings <span class="dim">(strongest first)</span></h4>
           <div class="gloss-row"><span class="gloss-term">Straight Flush</span><span class="gloss-def">Five cards in sequence, all the same suit.</span></div>
           <div class="gloss-row"><span class="gloss-term">Four of a Kind</span><span class="gloss-def">Four cards of the same rank.</span></div>
@@ -278,7 +290,7 @@
           <p class="gloss-intro">Short Deck (6+): a Flush beats a Full House, and A-6-7-8-9 counts as a straight.</p>
         </div>
 
-        <div class="gloss-section">
+        <div class="gloss-section" data-gsec="setup">
           <h4>Game setup</h4>
           <div class="gloss-row"><span class="gloss-term">Tournament</span><span class="gloss-def">Blinds rise over time; bust and you're out (you'll be offered a rebuy here).</span></div>
           <div class="gloss-row"><span class="gloss-term">Cash</span><span class="gloss-def">Blinds stay fixed; chips act like money and you can top up any time.</span></div>
@@ -290,6 +302,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

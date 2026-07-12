@@ -147,8 +147,8 @@ button:disabled { background: var(--surface-3); color: var(--text-dim); cursor: 
 #table-header { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; margin-bottom: 0.6rem; }
 #table-info { display: flex; flex: 1; gap: 0.5rem 1rem; flex-wrap: wrap; min-width: 0; color: var(--text-dim); }
 #table-info span:first-child { font-weight: 600; color: var(--text); }
-#simple-toggle { flex-shrink: 0; font-size: 0.85rem; cursor: pointer; }
-#simple-toggle input { cursor: pointer; }
+#simple-toggle, #styles-toggle { flex-shrink: 0; font-size: 0.85rem; cursor: pointer; }
+#simple-toggle input, #styles-toggle input { cursor: pointer; }
 
 /* ── History panel ──────────────────────────────────────────────────────────── */
 #history-panel {
@@ -209,6 +209,7 @@ button:disabled { background: var(--surface-3); color: var(--text-dim); cursor: 
 .seat.busted { opacity: 0.3; filter: grayscale(1); }
 .seat .name { font-weight: 600; }
 .seat .style { font-size: 0.7rem; opacity: 0.55; }
+body.hide-styles .seat .style { display: none; }
 .seat .chips { color: var(--text); font-variant-numeric: tabular-nums; }
 .badge {
   display: inline-block; padding: 0 0.35rem; border-radius: 4px;
@@ -313,15 +314,22 @@ button:disabled { background: var(--surface-3); color: var(--text-dim); cursor: 
   max-width: 720px; width: calc(100% - 2rem); max-height: 85vh; overflow: auto;
   box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.6);
 }
-#help-head {
+#help-top {
   position: sticky; top: 0; z-index: 1; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+#help-head {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 1.05rem;
+  padding: 0.7rem 0.9rem; font-weight: 600; font-size: 1.05rem;
 }
 #help-close { background: none; color: var(--text); padding: 0 0.4rem; font-size: 1rem; }
 #help-close:hover { background: var(--surface-3); }
+#help-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0 0.9rem 0.7rem; }
+#help-tabs button { font-size: 0.8rem; padding: 0.3rem 0.6rem; }
+#help-tabs button.active { background: var(--accent); color: var(--accent-contrast); border-color: transparent; }
 #help-body { padding: 0.2rem 0.9rem 1rem; }
-.gloss-section { margin-top: 1.1rem; }
+.gloss-section { display: none; margin-top: 0.8rem; }
+.gloss-section.active { display: block; }
 .gloss-section h4 {
   margin: 0 0 0.5rem; padding-bottom: 0.3rem; font-size: 0.95rem; color: var(--accent);
   border-bottom: 1px solid var(--border-soft);
