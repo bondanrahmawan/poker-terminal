@@ -17,9 +17,16 @@ def build_view(game, viewer_id: Optional[str]) -> dict:
     bs = game.blind_scheduler
     pending = game.pending_request
 
+    # Between hands (WAITING/END) the pot has been distributed to the winner(s);
+    # report an empty pot so the felt doesn't show a stale total (esp. at
+    # game-over, where no next deal ever clears it). pot_manager keeps its
+    # last-hand state internally until the next deal — that's intentional.
+    hand_over = game.state.value in ('WAITING', 'END')
+
     # pot_manager.pots is empty mid-hand and only populated at showdown.
-    pots = [{"amount": pot.amount, "eligible": sorted(pot.eligible_players)}
-            for pot in game.pot_manager.pots]
+    pots = [] if hand_over else [
+        {"amount": pot.amount, "eligible": sorted(pot.eligible_players)}
+        for pot in game.pot_manager.pots]
 
     players = []
     for p in game.players:
@@ -62,18 +69,28 @@ def build_view(game, viewer_id: Optional[str]) -> dict:
             "hand_name": hand_name,
         }
 
+    # Hands remaining at the current blind level before the next escalation.
+    # Escalation fires at the end of hand N when N % hands_per_level == 0 (see
+    # BlindScheduler.escalate_blinds), and current_level already reflects any
+    # escalation that has happened. Count completed hands within the current
+    # level, distinguishing an in-progress hand (not yet completed) from a
+    # finished one so the boundary hand reads "1", not a full level.
+    hands_to_level = None
+    if game.game_mode == 'tournament' and bs.current_level < bs.max_level:
+        hpl = game.hands_per_level
+        completed = (game.hand_count if hand_over else game.hand_count - 1) - bs.current_level * hpl
+        hands_to_level = hpl - completed
+
     return {
         "hand_number": game.hand_count,
         "state": game.state.value,
         "street": game.current_street,
         "community_cards": [c.to_dict() for c in game.community_cards],
-        "pot": game.pot_manager.total_pot(),
+        "pot": 0 if hand_over else game.pot_manager.total_pot(),
         "pots": pots,
         "blinds": {"small": bs.small_blind, "big": game.big_blind,
                    "ante": bs.ante, "level": bs.current_level + 1,
-                   "hands_to_level": (
-                       game.hands_per_level - (game.hand_count % game.hands_per_level)
-                       if game.game_mode == 'tournament' else None)},
+                   "hands_to_level": hands_to_level},
         "dealer_player_id": (game.players[game.dealer_idx].player_id
                              if game.players else None),
         "game_mode": game.game_mode,

@@ -86,7 +86,13 @@ class GameSession:
         return evs
 
     def stats(self) -> dict:
-        return {"stats": self.game.stats, "hand_count": self.game.hand_count}
+        # Drop cumulative_net: it only accumulates across simulation session
+        # resets (always 0 in single-session play) and the client never shows it.
+        projected = {
+            pid: {k: v for k, v in s.items() if k != "cumulative_net"}
+            for pid, s in self.game.stats.items()
+        }
+        return {"stats": projected, "hand_count": self.game.hand_count}
 
     # ── engine operations (call under self.lock) ──────────────────────────────
 

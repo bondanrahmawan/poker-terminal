@@ -162,6 +162,13 @@ def test_session_manager_caps_concurrent_sessions():
         mgr.create(SETTINGS)
 
 
+def test_stats_api_omits_cumulative_net():
+    game_id = _create()["game_id"]
+    s = client.get(f"/games/{game_id}/stats").json()["stats"]["h1"]
+    assert "cumulative_net" not in s          # engine-internal, always 0 here
+    assert "total_invested" in s and "topups" in s   # real fields still present
+
+
 def test_topup_before_hand_doubles_chips_and_invested():
     game_id = _create()["game_id"]
     r = client.post(f"/games/{game_id}/topup")

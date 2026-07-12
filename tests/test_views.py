@@ -71,9 +71,50 @@ def test_view_serializable_after_showdown():
     g.start_game()
     view = g.view_for(None)
     json.dumps(view)
-    # pots populated after showdown
-    assert isinstance(view["pots"], list)
-    assert view["pot"] == g.pot_manager.total_pot()
+    # The hand is over (WAITING): the pot has been distributed, so the view
+    # reports an empty pot even though pot_manager retains last-hand state.
+    assert view["pots"] == []
+    assert view["pot"] == 0
+
+
+def _drive_fold_out(g):
+    g.start_hand()
+    while g.pending_request is not None:
+        g.submit_action(g.pending_request.player_id, PlayerAction.FOLD, 0)
+
+
+def test_all_in_flag_cleared_between_hands():
+    """After a hand ends, no player should still read as all-in (regression:
+    is_all_in lingered, incl. for busted all-in players)."""
+    g = Game(big_blind=20, live_output=False, game_mode="tournament")
+    g.add_player(AgentPlayer("h1", "You", 40))
+    g.add_player(AgentPlayer("h2", "Opp", 40))
+    g.start_hand()
+    while g.pending_request is not None:
+        req = g.pending_request
+        if "all-in" in req.legal_actions:
+            g.submit_action(req.player_id, PlayerAction.ALL_IN, req.max_raise_total)
+        elif "call" in req.legal_actions:
+            g.submit_action(req.player_id, PlayerAction.CALL, req.min_call)
+        else:
+            g.submit_action(req.player_id, PlayerAction.CHECK, 0)
+    view = g.view_for("h1")
+    assert all(not p["is_all_in"] for p in view["players"])
+
+
+def test_blind_countdown_reaches_one_on_boundary_hand():
+    """The in-progress boundary hand must read 'next in 1', not a full level."""
+    g = Game(big_blind=20, hands_per_level=5, live_output=False, game_mode="tournament")
+    g.add_player(AgentPlayer("h1", "You", 10_000_000))
+    g.add_player(AgentPlayer("h2", "Opp", 10_000_000))
+    g.start_hand()                       # hand 1, in progress
+    assert g.view_for("h1")["blinds"]["hands_to_level"] == 5
+    while g.pending_request is not None:
+        g.submit_action(g.pending_request.player_id, PlayerAction.FOLD, 0)
+    for _ in range(3):                   # finish hands 2, 3, 4
+        _drive_fold_out(g)
+    g.start_hand()                       # hand 5 (boundary), in progress
+    assert g.view_for("h1")["blinds"]["hands_to_level"] == 1
 
 
 # ── Hidden-information filtering ───────────────────────────────────────────────

@@ -671,6 +671,13 @@ class Game:
             if p.chips == 0:
                 self.stats_tracker.record_bust(p.player_id, self.hand_count)
 
+        # Clear stale all-in flags at hand end — including for busted players,
+        # whose flag reset_for_hand (next deal) skips. (The pot is emptied for
+        # display purposes in the view once the hand is over; pot_manager itself
+        # is reset at the next deal so post-hand invariants stay inspectable.)
+        for p in self.players:
+            p.is_all_in = False
+
         # Notify bots of hand results for dynamic behavior (tilt, image, tracking)
         if self._last_hand_result is not None:
             for p in self.players:
