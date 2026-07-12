@@ -710,7 +710,20 @@ function renderActionBar(v) {
     add.className = "chip-btn";
     add.onclick = addChips;
     bar.appendChild(add);
+
+    const quit = document.createElement("button");
+    quit.textContent = "Quit table";
+    quit.className = "chip-btn";
+    quit.onclick = quitTable;
+    bar.appendChild(quit);
   }
+}
+
+// Leave the table for good: persist the session server-side (DELETE), then reset.
+async function quitTable() {
+  if (!confirm("Leave this table? Your session stats will be saved.")) return;
+  try { await fetch(`/games/${S.gameId}`, { method: "DELETE" }); } catch (e) { /* best effort */ }
+  newGame();
 }
 
 function renderActions(bar, req) {

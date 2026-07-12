@@ -154,7 +154,9 @@ def create_app() -> FastAPI:
 
     @app.delete("/games/{game_id}", status_code=204)
     async def delete_game(game_id: str):
-        _get(game_id)
+        session = _get(game_id)
+        with session.lock:
+            session.persist()  # preserve the session in tournament history before it's gone
         manager.remove(game_id)
         return Response(status_code=204)
 

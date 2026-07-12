@@ -11,6 +11,7 @@ from typing import Optional
 from core.game import Game
 from core.player import PlayerAction
 from core.state import GameState
+from core.stats_persistent import PersistentStatsManager
 from players.agent import AgentPlayer
 from players.roster import create_bots
 from strategies.difficulty import EASY, NORMAL, HARD
@@ -44,6 +45,7 @@ class GameSession:
         self.last_touched = time.time()
         self.ws_connections = []          # active WebSocket connections
         self._broadcast_cursor = -1       # last event seq pushed to WS clients
+        self._persisted = False           # tournament-history write done (once)
 
         difficulty = _DIFFICULTY.get(settings.get("difficulty", "normal"), NORMAL)
         self.game = Game(
@@ -108,6 +110,7 @@ class GameSession:
 
         active = [p for p in self.game.players if p.chips > 0]
         if len(active) <= 1:
+            self.persist()
             raise GameOverError(active[0].name if active else None)
 
         if self.game.pending_request is not None:
@@ -130,6 +133,29 @@ class GameSession:
     def submit(self, action_str: str, amount: int = 0) -> None:
         action = PlayerAction(action_str)   # ValueError on unknown action string
         self.game.submit_action(HUMAN_ID, action, amount)
+
+    def persist(self) -> None:
+        """Append this table's final stats to the persistent tournament history,
+        matching main.py's save_session shape. Runs at most once, and never for a
+        game that dealt no hands. Call under self.lock."""
+        if self._persisted or self.game.hand_count == 0:
+            return
+        self._persisted = True
+
+        difficulty = _DIFFICULTY.get(self.settings.get("difficulty", "normal"), NORMAL)
+        game_stats = {"hand_count": self.game.hand_count}
+        for p in self.game.players:
+            game_stats[p.player_id] = self.game.stats[p.player_id]
+
+        pm = PersistentStatsManager()
+        session_id = len(pm.get_session_history()) + 1
+        pm.save_session(
+            session_id=session_id,
+            difficulty=difficulty,
+            players=self.game.players,
+            game_stats=game_stats,
+            game_mode=self.settings.get("game_mode", "tournament"),
+        )
 
 
 class CapacityError(Exception):

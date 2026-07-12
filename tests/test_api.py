@@ -2,11 +2,14 @@
 Tests for the Phase 4 FastAPI transport (api/).
 Run with: pytest tests/test_api.py -v
 """
+import functools
+
 import pytest
 from fastapi.testclient import TestClient
 
 from api.server import app
 from api.sessions import SessionManager, CapacityError
+from core.stats_persistent import PersistentStatsManager
 
 client = TestClient(app)
 
@@ -140,6 +143,34 @@ def test_delete_game():
     game_id = _create()["game_id"]
     assert client.delete(f"/games/{game_id}").status_code == 204
     assert client.get(f"/games/{game_id}/state").status_code == 404
+
+
+def _patch_stats_file(monkeypatch, tmp_path):
+    """Redirect persistence to a throwaway stats file so tests never touch the
+    real player_stats.json. Returns the file path."""
+    stats_file = tmp_path / "player_stats.json"
+    monkeypatch.setattr("api.sessions.PersistentStatsManager",
+                        functools.partial(PersistentStatsManager, stats_file=stats_file))
+    return stats_file
+
+
+def test_delete_persists_played_session(monkeypatch, tmp_path):
+    stats_file = _patch_stats_file(monkeypatch, tmp_path)
+    game_id = _create()["game_id"]
+    _play_hand_always_call(game_id)
+    assert client.delete(f"/games/{game_id}").status_code == 204
+
+    history = PersistentStatsManager(stats_file=stats_file).get_session_history()
+    assert len(history) == 1
+
+
+def test_delete_zero_hands_persists_nothing(monkeypatch, tmp_path):
+    stats_file = _patch_stats_file(monkeypatch, tmp_path)
+    game_id = _create()["game_id"]
+    assert client.delete(f"/games/{game_id}").status_code == 204
+
+    history = PersistentStatsManager(stats_file=stats_file).get_session_history()
+    assert history == []
 
 
 def test_stats_endpoint():
