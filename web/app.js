@@ -1327,10 +1327,11 @@ function toggleRaisePanel(bar, req) {
   const max = req.max_raise_total;
   const minCall = req.min_call;
   const pot = req.pot_size;
-  // Shortcut totals mirror players/terminal.py (amounts are deltas pushed now).
+  // Shortcut deltas mirror players/terminal.py (chips pushed in now). A pot-
+  // sized raise = call the outstanding bet, then raise by the resulting pot.
   const clamp = (x) => Math.min(max, Math.max(min, x));
-  const half = clamp(Math.floor(pot / 2) + minCall);
-  const full = clamp(pot + minCall);
+  const half = clamp(minCall + Math.floor((pot + minCall) / 2));
+  const full = clamp(minCall + (pot + minCall));
 
   const panel = document.createElement("div");
   panel.className = "raise-panel";

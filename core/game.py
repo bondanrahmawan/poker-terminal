@@ -533,7 +533,9 @@ class Game:
         full_min_raise = min_call + self.bet_manager.min_raise
         raise_legal = p.chips > min_call and p.chips >= full_min_raise
 
-        legal = ['fold']
+        # Fold is only offered when there is something to call; with a free
+        # check available, folding is strictly dominated, so it's left out.
+        legal = ['fold'] if min_call > 0 else []
         legal.append('check' if min_call == 0 else 'call')
         if raise_legal:
             legal.append('raise')
