@@ -4,7 +4,7 @@ const S = {
   gameId: null,
   view: null,
   ws: null,
-  phase: "settings", // "settings" | "table"
+  phase: "menu", // "menu" | "settings" | "table" | "stats_view"
   lastSeq: -1,        // highest event seq seen (dedupe + backfill cursor)
   queue: [],          // events awaiting animation
   animating: false,
@@ -234,7 +234,7 @@ function newGame() {
   S.closing = true; // deliberate close — onclose must not schedule a reconnect
   if (S.ws) { try { S.ws.close(); } catch (e) { /* already closed */ } }
   Object.assign(S, {
-    gameId: null, view: null, ws: null, phase: "settings",
+    gameId: null, view: null, ws: null, phase: "menu",
     lastSeq: -1, queue: [], animating: false, pendingView: null, skip: false,
     closing: false,
   });
@@ -524,6 +524,133 @@ function closeStats() {
   el("stats-modal").classList.add("hidden");
 }
 
+// ── Landing menu + tournament-stats viewer ────────────────────────────────────
+
+function showMenu() {
+  S.phase = "menu";
+  render();
+}
+
+function showSettings() {
+  S.phase = "settings";
+  render();
+}
+
+// Viewer state: which tab and difficulty filter are active.
+const SV = { tab: "players", difficulty: "" };
+
+function showStatsView() {
+  S.phase = "stats_view";
+  render();
+  loadStatsView();
+}
+
+async function loadStatsView() {
+  el("sv-tabs").querySelectorAll("button").forEach((b) =>
+    b.classList.toggle("active", b.dataset.tab === SV.tab));
+  const body = el("sv-body");
+  body.textContent = "Loading…";
+  const q = SV.difficulty ? `?difficulty=${encodeURIComponent(SV.difficulty)}` : "";
+  const path = SV.tab === "players" ? "/stats/tournament/players" : "/stats/tournament/sessions";
+  try {
+    const res = await fetch(path + q);
+    const data = await res.json();
+    body.innerHTML = SV.tab === "players" ? renderStatsPlayers(data) : renderStatsSessions(data);
+    if (SV.tab === "players") wirePlayerRows();
+  } catch (e) {
+    body.textContent = "Could not load stats.";
+  }
+}
+
+// dict {difficulty_label: [player aggregate, …]} → one table per difficulty group.
+function renderStatsPlayers(byDiff) {
+  const groups = Object.entries(byDiff);
+  if (!groups.length) return `<p class="sv-empty">No tournament stats yet.</p>`;
+  return groups.sort().map(([diff, players]) => {
+    const rows = players.map((p, i) => {
+      const net = (p.total_net >= 0 ? "+" : "") + p.total_net.toLocaleString();
+      return `<tr class="sv-player" data-pid="${esc(p.player_id)}">` +
+        `<td>${i + 1}</td>` +
+        `<td><div>${esc(p.name)}</div><div class="stat-style">${p.is_human ? "Human" : "Bot"}</div></td>` +
+        `<td>${p.total_sessions}</td><td>${p.total_hands_played}</td>` +
+        `<td>${p.total_hands_won}</td><td>${p.win_rate.toFixed(1)}%</td>` +
+        `<td class="${p.total_net >= 0 ? "pos" : "neg"}">${net}</td></tr>`;
+    }).join("");
+    return `<h3 class="sv-group">${esc(diff)} <span class="dim">(${players.length})</span></h3>` +
+      `<table><thead><tr><th>#</th><th>Player</th><th>Sessions</th><th>Hands</th>` +
+      `<th>Won</th><th>Win%</th><th>Net</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }).join("");
+}
+
+// list of session summaries → one table.
+function renderStatsSessions(sessions) {
+  if (!sessions.length) return `<p class="sv-empty">No sessions yet.</p>`;
+  const rows = sessions.map((s) =>
+    `<tr><td>#${s.session_id}</td><td>${esc(s.difficulty)}</td><td>${esc(s.date)}</td>` +
+    `<td>${s.hands_played}</td><td>${esc(s.game_mode)}</td><td>${s.players.length}</td></tr>`
+  ).join("");
+  return `<table><thead><tr><th>ID</th><th>Difficulty</th><th>Date</th>` +
+    `<th>Hands</th><th>Mode</th><th>Players</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function wirePlayerRows() {
+  el("sv-body").querySelectorAll("tr.sv-player").forEach((tr) => {
+    tr.onclick = () => loadPlayerHistory(tr.dataset.pid);
+  });
+}
+
+async function loadPlayerHistory(playerId) {
+  const body = el("sv-body");
+  body.textContent = "Loading…";
+  const q = SV.difficulty ? `?difficulty=${encodeURIComponent(SV.difficulty)}` : "";
+  try {
+    const res = await fetch(`/stats/tournament/players/${encodeURIComponent(playerId)}${q}`);
+    const h = await res.json();
+    body.innerHTML = renderPlayerHistory(h);
+    el("sv-back-list").onclick = loadStatsView;
+  } catch (e) {
+    body.textContent = "Could not load player history.";
+  }
+}
+
+function renderPlayerHistory(h) {
+  if (!h || !h.player_id) return `<button id="sv-back-list" class="chip-btn">← Back</button>` +
+    `<p class="sv-empty">No history for this player.</p>`;
+  const at = h.all_time || {};
+  const net = at.total_net != null ? (at.total_net >= 0 ? "+" : "") + at.total_net.toLocaleString() : "—";
+  const avg = at.avg_net_per_session != null
+    ? (at.avg_net_per_session >= 0 ? "+" : "") + Math.round(at.avg_net_per_session).toLocaleString() : "—";
+
+  let allTime = "";
+  if (at.total_sessions) {
+    allTime =
+      `<div class="ins-line">Sessions: <b>${at.total_sessions}</b> · Hands: <b>${at.total_hands_played}</b> · ` +
+      `Won: <b>${at.total_hands_won}</b> · Win rate: <b>${at.win_rate.toFixed(1)}%</b></div>` +
+      `<div class="ins-line">Net: <b class="${at.total_net >= 0 ? "pos" : "neg"}">${net}</b> · ` +
+      `Avg/session: <b>${avg}</b> · Rebuys: <b>${at.total_rebuys}</b> · Biggest pot: <b>${at.biggest_pot.toLocaleString()}</b></div>` +
+      `<div class="ins-line">Best hand: <b>${esc(at.best_hand)}</b></div>`;
+  }
+
+  const diffs = Object.entries(h.by_difficulty || {});
+  let byDiff = "";
+  if (diffs.length) {
+    const rows = diffs.sort().map(([diff, d]) => {
+      const s = d.stats;
+      const dn = (s.total_net >= 0 ? "+" : "") + s.total_net.toLocaleString();
+      const da = (s.avg_net_per_session >= 0 ? "+" : "") + Math.round(s.avg_net_per_session).toLocaleString();
+      return `<tr><td>${esc(diff)}</td><td>${s.total_sessions}</td><td>${s.total_hands_played}</td>` +
+        `<td>${s.win_rate.toFixed(1)}%</td><td class="${s.total_net >= 0 ? "pos" : "neg"}">${dn}</td><td>${da}</td></tr>`;
+    }).join("");
+    byDiff = `<div class="ins-sub">By difficulty</div>` +
+      `<table><thead><tr><th>Difficulty</th><th>Sessions</th><th>Hands</th><th>Win%</th>` +
+      `<th>Net</th><th>Avg Net</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  return `<button id="sv-back-list" class="chip-btn">← Back</button>` +
+    `<h3 class="sv-group">${esc(h.name)} <span class="dim">${h.is_human ? "Human" : "Bot"}</span></h3>` +
+    `<div class="insights">${allTime}${byDiff}</div>`;
+}
+
 function initHistoryToggle() {
   const panel = el("history-panel");
   panel.classList.toggle("collapsed", localStorage.getItem("poker.history") === "1");
@@ -587,8 +714,10 @@ el("settings-form").addEventListener("submit", async (e) => {
 // ── Rendering ────────────────────────────────────────────────────────────────
 
 function render() {
+  el("menu").classList.toggle("hidden", S.phase !== "menu");
   el("settings").classList.toggle("hidden", S.phase !== "settings");
   el("table").classList.toggle("hidden", S.phase !== "table");
+  el("stats-view").classList.toggle("hidden", S.phase !== "stats_view");
   if (S.phase === "table") renderTable();
 }
 
@@ -820,6 +949,27 @@ document.addEventListener("visibilitychange", () => { if (document.hidden && S.a
 // Quit the table at any point → back to settings (clears the session).
 el("quit-btn").addEventListener("click", () => {
   if (confirm("Leave this table and start a new game?")) newGame();
+});
+
+// Landing-menu wiring: Play → settings, Tournament stats → viewer; disabled
+// entries (Simulation, Simulation stats) do nothing until later phases.
+el("menu-list").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-menu]");
+  if (!btn || btn.disabled) return;
+  if (btn.dataset.menu === "play") showSettings();
+  else if (btn.dataset.menu === "tstats") showStatsView();
+});
+el("settings-back").addEventListener("click", showMenu);
+el("stats-view-back").addEventListener("click", showMenu);
+el("sv-difficulty").addEventListener("change", (e) => {
+  SV.difficulty = e.target.value;
+  loadStatsView();
+});
+el("sv-tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-tab]");
+  if (!btn) return;
+  SV.tab = btn.dataset.tab;
+  loadStatsView();
 });
 
 // Stats modal wiring: button, ✕, backdrop click.

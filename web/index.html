@@ -7,8 +7,20 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- ── Landing menu ─────────────────────────────────────────────────────── -->
+  <section id="menu" class="screen">
+    <h1>Poker Terminal</h1>
+    <div id="menu-list">
+      <button type="button" data-menu="play">▶ Play</button>
+      <button type="button" data-menu="sim" disabled>▶ Simulation <span class="soon">coming in M4</span></button>
+      <button type="button" data-menu="tstats">▶ Tournament stats</button>
+      <button type="button" data-menu="sstats" disabled>▶ Simulation stats <span class="soon">coming in M2</span></button>
+    </div>
+  </section>
+
   <!-- ── Settings ─────────────────────────────────────────────────────────── -->
-  <section id="settings" class="screen">
+  <section id="settings" class="screen hidden">
+    <button type="button" class="back-btn" id="settings-back">← Menu</button>
     <h1>Poker Terminal</h1>
     <form id="settings-form">
       <label>Your name
@@ -71,6 +83,29 @@
       <button id="history-toggle" type="button">History ▾</button>
       <div id="history"></div>
     </aside>
+  </section>
+
+  <!-- ── Tournament stats viewer ──────────────────────────────────────────── -->
+  <section id="stats-view" class="screen hidden">
+    <header id="sv-header">
+      <button type="button" class="back-btn" id="stats-view-back">← Menu</button>
+      <h1>Tournament Stats</h1>
+    </header>
+    <div id="sv-controls">
+      <label>Difficulty
+        <select id="sv-difficulty">
+          <option value="">All</option>
+          <option value="Easy">Easy</option>
+          <option value="Normal">Normal</option>
+          <option value="Hard">Hard</option>
+        </select>
+      </label>
+      <div id="sv-tabs">
+        <button type="button" class="chip-btn active" data-tab="players">Players</button>
+        <button type="button" class="chip-btn" data-tab="sessions">Sessions</button>
+      </div>
+    </div>
+    <div id="sv-body"></div>
   </section>
 
   <!-- ── Stats modal ──────────────────────────────────────────────────────── -->

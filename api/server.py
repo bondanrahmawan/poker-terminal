@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.responses import JSONResponse, Response
 
 from core.errors import IllegalActionError
+from core.stats_persistent import PersistentStatsManager
 from api.schemas import CreateGameRequest, StartHandRequest, ActionRequestBody
 from api.sessions import (
     SessionManager, GameSession, CapacityError,
@@ -159,6 +160,24 @@ def create_app() -> FastAPI:
             session.persist()  # preserve the session in tournament history before it's gone
         manager.remove(game_id)
         return Response(status_code=204)
+
+    # ── Tournament stats (read-only) ──────────────────────────────────────────
+    # Thin wrappers over PersistentStatsManager getters. The manager is a cheap
+    # file read, so construct one per request (no caching). Static paths, so they
+    # sit above the "/" mount like every other route and never collide with
+    # /games/{id}.
+
+    @app.get("/stats/tournament/players")
+    async def stats_players(difficulty: Optional[str] = Query(None)):
+        return PersistentStatsManager().get_all_players_by_difficulty(difficulty)
+
+    @app.get("/stats/tournament/players/{player_id}")
+    async def stats_player_history(player_id: str, difficulty: Optional[str] = Query(None)):
+        return PersistentStatsManager().get_player_history(player_id, difficulty)
+
+    @app.get("/stats/tournament/sessions")
+    async def stats_sessions(difficulty: Optional[str] = Query(None)):
+        return PersistentStatsManager().get_session_history(difficulty)
 
     # ── WebSocket ─────────────────────────────────────────────────────────────
 

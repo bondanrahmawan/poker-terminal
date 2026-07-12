@@ -166,6 +166,43 @@ button:disabled { background: #3a5a42; cursor: default; }
 #stats-body .ins-line { font-size: 0.85rem; padding: 0.1rem 0; }
 #stats-btn, #quit-btn { flex-shrink: 0; font-size: 0.85rem; padding: 0.3rem 0.7rem; }
 
+/* ── Landing menu ─────────────────────────────────────────────────────────── */
+#menu h1 { text-align: center; }
+#menu-list { display: grid; gap: 0.6rem; max-width: 360px; margin: 1.5rem auto 0; }
+#menu-list button {
+  text-align: left; font-size: 1.05rem; padding: 0.7rem 1rem;
+  background: #1a2a1e; border: 1px solid #3a5a42;
+}
+#menu-list button:hover:not(:disabled) { background: #22331f; }
+#menu-list button:disabled { opacity: 0.5; }
+#menu-list .soon { font-size: 0.75rem; opacity: 0.7; }
+.back-btn { background: #3a5a42; font-size: 0.85rem; padding: 0.3rem 0.7rem; margin-bottom: 0.75rem; }
+
+/* ── Tournament stats viewer ──────────────────────────────────────────────── */
+#sv-header { display: flex; align-items: center; gap: 1rem; }
+#sv-header h1 { margin: 0; }
+#sv-controls { display: flex; align-items: center; gap: 1rem; margin: 1rem 0; flex-wrap: wrap; }
+#sv-difficulty { padding: 0.3rem; background: #1a2a1e; color: inherit; border: 1px solid #3a5a42; border-radius: 4px; }
+#sv-tabs { display: flex; gap: 0.5rem; }
+#sv-tabs button.active { background: #2f7d46; }
+#sv-body { overflow-x: auto; }
+#sv-body table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 1rem; }
+#sv-body th, #sv-body td { text-align: right; padding: 0.3rem 0.4rem; white-space: nowrap; }
+#sv-body th:first-child, #sv-body td:first-child,
+#sv-body th:nth-child(2), #sv-body td:nth-child(2) { text-align: left; }
+#sv-body thead th { border-bottom: 1px solid #26402c; opacity: 0.8; }
+#sv-body .pos { color: #7fd68f; }
+#sv-body .neg { color: #e08585; }
+#sv-body .dim { opacity: 0.55; }
+#sv-body .stat-style { font-size: 0.7rem; opacity: 0.55; }
+#sv-body tr.sv-player { cursor: pointer; }
+#sv-body tr.sv-player:hover { background: #1a2a1e; }
+#sv-body .sv-group { font-size: 1rem; margin: 0.8rem 0 0.4rem; }
+#sv-body .sv-empty { opacity: 0.7; }
+#sv-body .insights { margin-top: 0.6rem; }
+#sv-body .ins-sub { margin: 0.8rem 0 0.3rem; opacity: 0.7; }
+#sv-body .ins-line { padding: 0.15rem 0; }
+
 /* ── Simple display mode ──────────────────────────────────────────────────────
    CSS-only: drop the felt ellipse and absolute positioning; inline left/top are
    inert once the seats are position:static, so no JS/DOM change is needed. */

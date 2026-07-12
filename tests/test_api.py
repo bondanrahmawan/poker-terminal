@@ -147,10 +147,12 @@ def test_delete_game():
 
 def _patch_stats_file(monkeypatch, tmp_path):
     """Redirect persistence to a throwaway stats file so tests never touch the
-    real player_stats.json. Returns the file path."""
+    real player_stats.json. Patches both the writer (api.sessions) and the
+    read-only viewer endpoints (api.server). Returns the file path."""
     stats_file = tmp_path / "player_stats.json"
-    monkeypatch.setattr("api.sessions.PersistentStatsManager",
-                        functools.partial(PersistentStatsManager, stats_file=stats_file))
+    patched = functools.partial(PersistentStatsManager, stats_file=stats_file)
+    monkeypatch.setattr("api.sessions.PersistentStatsManager", patched)
+    monkeypatch.setattr("api.server.PersistentStatsManager", patched)
     return stats_file
 
 
@@ -171,6 +173,36 @@ def test_delete_zero_hands_persists_nothing(monkeypatch, tmp_path):
 
     history = PersistentStatsManager(stats_file=stats_file).get_session_history()
     assert history == []
+
+
+def test_tournament_stats_endpoints_reflect_played_session(monkeypatch, tmp_path):
+    _patch_stats_file(monkeypatch, tmp_path)
+    game_id = _create()["game_id"]  # SETTINGS difficulty is "normal" -> "Normal"
+    _play_hand_always_call(game_id)
+    assert client.delete(f"/games/{game_id}").status_code == 204
+
+    sessions = client.get("/stats/tournament/sessions").json()
+    assert len(sessions) == 1
+    assert sessions[0]["difficulty"] == "Normal"
+
+    # Difficulty filter passes through to the getter.
+    assert client.get("/stats/tournament/sessions", params={"difficulty": "Normal"}).json()
+    assert client.get("/stats/tournament/sessions", params={"difficulty": "Hard"}).json() == []
+
+    players = client.get("/stats/tournament/players").json()
+    assert "Normal" in players
+    assert any(p["player_id"] == "h1" for p in players["Normal"])
+
+    history = client.get("/stats/tournament/players/h1").json()
+    assert history["player_id"] == "h1"
+    assert history["all_time"]["total_sessions"] == 1
+
+
+def test_tournament_stats_endpoints_empty(monkeypatch, tmp_path):
+    _patch_stats_file(monkeypatch, tmp_path)
+    assert client.get("/stats/tournament/sessions").json() == []
+    assert client.get("/stats/tournament/players").json() == {}
+    assert client.get("/stats/tournament/players/nobody").json() == {}
 
 
 def test_stats_endpoint():
