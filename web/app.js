@@ -533,6 +533,10 @@ function statsInsights(rows) {
     `</div>`;
 }
 
+// ── Glossary / Help modal ─────────────────────────────────────────────────────
+function openHelp() { el("help-modal").classList.remove("hidden"); }
+function closeHelp() { el("help-modal").classList.add("hidden"); }
+
 function closeStats() {
   el("stats-modal").classList.add("hidden");
   if (statsThenQuit) {
@@ -1428,6 +1432,7 @@ el("menu-list").addEventListener("click", (e) => {
   else if (btn.dataset.menu === "tstats") showStatsView();
   else if (btn.dataset.menu === "sstats") showSimStats();
   else if (btn.dataset.menu === "sim") showSim();
+  else if (btn.dataset.menu === "help") openHelp();
 });
 el("settings-back").addEventListener("click", showMenu);
 el("stats-view-back").addEventListener("click", showMenu);
@@ -1485,10 +1490,21 @@ el("stats-modal").addEventListener("click", (e) => {
   if (e.target === el("stats-modal")) closeStats();
 });
 
+// Glossary / Help modal wiring: in-game button, ✕, backdrop click.
+el("help-btn").addEventListener("click", openHelp);
+el("help-close").addEventListener("click", closeHelp);
+el("help-modal").addEventListener("click", (e) => {
+  if (e.target === el("help-modal")) closeHelp();
+});
+
 // Keyboard shortcuts (V4). Driven by clicking the rendered buttons so all
 // gating (animating, disabled, legality) stays in renderActionBar.
 document.addEventListener("keydown", (e) => {
   if (e.target.matches("input, textarea, select")) return;
+  if (!el("help-modal").classList.contains("hidden")) {
+    if (e.key === "Escape") closeHelp();
+    return;
+  }
   if (!el("stats-modal").classList.contains("hidden")) {
     if (e.key === "Escape") closeStats();
     return;

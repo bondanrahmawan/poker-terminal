@@ -299,7 +299,45 @@ button:disabled { background: var(--surface-3); color: var(--text-dim); cursor: 
 #stats-body .insights h4 { margin: 0 0 0.4rem; font-size: 0.9rem; }
 #stats-body .ins-sub { margin: 0.6rem 0 0.2rem; color: var(--text-dim); font-size: 0.8rem; }
 #stats-body .ins-line { font-size: 0.85rem; padding: 0.1rem 0; }
-#stats-btn, #quit-btn { flex-shrink: 0; font-size: 0.85rem; padding: 0.3rem 0.7rem; }
+#stats-btn, #quit-btn, #help-btn { flex-shrink: 0; font-size: 0.85rem; padding: 0.3rem 0.7rem; }
+
+/* ── Glossary / Help modal ────────────────────────────────────────────────── */
+#help-modal {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center;
+}
+#help-modal.hidden { display: none; }
+#help-box {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  max-width: 720px; width: calc(100% - 2rem); max-height: 85vh; overflow: auto;
+  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.6);
+}
+#help-head {
+  position: sticky; top: 0; z-index: 1; background: var(--surface);
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 1.05rem;
+}
+#help-close { background: none; color: var(--text); padding: 0 0.4rem; font-size: 1rem; }
+#help-close:hover { background: var(--surface-3); }
+#help-body { padding: 0.2rem 0.9rem 1rem; }
+.gloss-section { margin-top: 1.1rem; }
+.gloss-section h4 {
+  margin: 0 0 0.5rem; padding-bottom: 0.3rem; font-size: 0.95rem; color: var(--accent);
+  border-bottom: 1px solid var(--border-soft);
+}
+.gloss-section h4 .dim { color: var(--text-dim); font-weight: normal; font-size: 0.8rem; }
+.gloss-intro { margin: 0 0 0.5rem; font-size: 0.82rem; color: var(--text-dim); line-height: 1.5; }
+.gloss-row {
+  display: grid; grid-template-columns: 132px 1fr; gap: 0.7rem;
+  padding: 0.24rem 0; font-size: 0.88rem; line-height: 1.45; align-items: baseline;
+}
+.gloss-term { font-weight: 600; }
+.gloss-def { color: var(--text); }
+.gloss-def em, .gloss-intro em { color: var(--text); font-style: normal; font-weight: 600; }
+@media (max-width: 560px) {
+  .gloss-row { grid-template-columns: 1fr; gap: 0.05rem; padding: 0.35rem 0; }
+}
 
 /* ── Landing menu ─────────────────────────────────────────────────────────── */
 #menu h1 { text-align: center; }

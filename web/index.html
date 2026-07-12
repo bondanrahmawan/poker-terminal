@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Poker Terminal</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext x='1' y='14' font-size='14'%3E%E2%99%A0%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
   <button id="theme-toggle" type="button" aria-label="Toggle light or dark theme" title="Toggle theme">🌙</button>
@@ -17,6 +17,7 @@
       <button type="button" data-menu="sim">▶ Simulation</button>
       <button type="button" data-menu="tstats">▶ Tournament stats</button>
       <button type="button" data-menu="sstats">▶ Simulation stats</button>
+      <button type="button" data-menu="help">▶ Glossary / Help</button>
     </div>
   </section>
 
@@ -63,6 +64,7 @@
     <div id="table-main">
       <header id="table-header">
         <div id="table-info"></div>
+        <button id="help-btn" type="button" class="chip-btn">Help</button>
         <button id="stats-btn" type="button" class="chip-btn">Stats</button>
         <button id="quit-btn" type="button" class="chip-btn">Quit</button>
         <label id="simple-toggle" class="inline"><input type="checkbox" /> Simple view</label>
@@ -195,6 +197,99 @@
     </div>
   </div>
 
-  <script src="app.js?v=5"></script>
+  <!-- ── Glossary / Help modal ────────────────────────────────────────────── -->
+  <div id="help-modal" class="hidden">
+    <div id="help-box">
+      <div id="help-head">
+        <span>Poker Glossary &amp; Help</span>
+        <button id="help-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <div id="help-body">
+
+        <div class="gloss-section">
+          <h4>Table positions</h4>
+          <p class="gloss-intro">Seats are named by where they sit relative to the dealer button. Acting later (more information) is an advantage.</p>
+          <div class="gloss-row"><span class="gloss-term"><span class="badge">BTN</span></span><span class="gloss-def">Button — the dealer seat. Acts <em>last</em> after the flop: the best position.</span></div>
+          <div class="gloss-row"><span class="gloss-term"><span class="badge">SB</span></span><span class="gloss-def">Small Blind — posts a forced half-bet, sits left of the button, and acts first after the flop.</span></div>
+          <div class="gloss-row"><span class="gloss-term"><span class="badge">BB</span></span><span class="gloss-def">Big Blind — posts the full forced bet and acts last before the flop (gets the "option").</span></div>
+          <div class="gloss-row"><span class="gloss-term"><span class="badge">UTG</span></span><span class="gloss-def">Under the Gun — first to act before the flop; the earliest, toughest spot.</span></div>
+          <div class="gloss-row"><span class="gloss-term"><span class="badge">MP</span></span><span class="gloss-def">Middle Position — the seats between the early and late positions.</span></div>
+          <div class="gloss-row"><span class="gloss-term"><span class="badge">HJ</span></span><span class="gloss-def">Hijack — two seats right of the button; a late position.</span></div>
+          <div class="gloss-row"><span class="gloss-term"><span class="badge">CO</span></span><span class="gloss-def">Cutoff — one seat right of the button; a strong late position.</span></div>
+          <div class="gloss-row"><span class="gloss-term"><span class="badge">BTN/SB</span></span><span class="gloss-def">Heads-up (2 players): the button also posts the small blind and acts first before the flop.</span></div>
+          <div class="gloss-row"><span class="gloss-term"><span class="badge allin">ALL-IN</span></span><span class="gloss-def">The player has put all of their chips into the pot.</span></div>
+        </div>
+
+        <div class="gloss-section">
+          <h4>Betting rounds (streets)</h4>
+          <p class="gloss-intro">A hand plays out over four rounds as shared "community" cards are revealed.</p>
+          <div class="gloss-row"><span class="gloss-term">Preflop</span><span class="gloss-def">You have your 2 hidden hole cards; no community cards yet. First round of betting.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Flop</span><span class="gloss-def">The first 3 community cards are dealt face-up.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Turn</span><span class="gloss-def">A 4th community card.</span></div>
+          <div class="gloss-row"><span class="gloss-term">River</span><span class="gloss-def">The 5th and final community card.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Showdown</span><span class="gloss-def">Remaining players reveal their cards; the best 5-card hand wins the pot.</span></div>
+        </div>
+
+        <div class="gloss-section">
+          <h4>Actions</h4>
+          <div class="gloss-row"><span class="gloss-term">Fold</span><span class="gloss-def">Give up the hand and any chips already in the pot.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Check</span><span class="gloss-def">Pass the action without betting — only possible when you owe nothing.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Call</span><span class="gloss-def">Match the current bet to stay in the hand.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Bet</span><span class="gloss-def">Put chips in when no one has bet yet this round.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Raise</span><span class="gloss-def">Increase the current bet, forcing others to call more or fold.</span></div>
+          <div class="gloss-row"><span class="gloss-term">All-in</span><span class="gloss-def">Bet every chip you have left.</span></div>
+        </div>
+
+        <div class="gloss-section">
+          <h4>Money &amp; the pot</h4>
+          <div class="gloss-row"><span class="gloss-term">Blinds (SB / BB)</span><span class="gloss-def">Forced bets that seed the pot each hand, so there's always something to play for.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Ante</span><span class="gloss-def">An extra small forced bet from everyone, when enabled.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Pot</span><span class="gloss-def">All the chips wagered so far — what you're playing to win.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Main / Side pot</span><span class="gloss-def">When a player is all-in for less, later bets go into a side pot they can't win.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Pot odds</span><span class="gloss-def">The price to call, shown as ratio and % (e.g. 2.5:1 = 29%). Calling is profitable when your chance to win beats that %.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Min raise</span><span class="gloss-def">The smallest legal raise you're allowed to make.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Stack</span><span class="gloss-def">The chips you have left in front of you.</span></div>
+        </div>
+
+        <div class="gloss-section">
+          <h4>Bot playing styles</h4>
+          <p class="gloss-intro">Each bot's label describes how it plays. <em>Tight/loose</em> = how many hands it plays; <em>passive/aggressive</em> = how often it bets &amp; raises vs. just calls.</p>
+          <div class="gloss-row"><span class="gloss-term">tight_passive</span><span class="gloss-def">Plays few hands and rarely raises — a cautious "rock".</span></div>
+          <div class="gloss-row"><span class="gloss-term">tight_aggressive</span><span class="gloss-def">Few hands, but bets and raises hard with them (TAG) — a strong, tough style.</span></div>
+          <div class="gloss-row"><span class="gloss-term">loose_passive</span><span class="gloss-def">Plays lots of hands and mostly calls — a "calling station".</span></div>
+          <div class="gloss-row"><span class="gloss-term">loose_aggressive</span><span class="gloss-def">Plays lots of hands and applies constant pressure (LAG).</span></div>
+          <div class="gloss-row"><span class="gloss-term">maniac</span><span class="gloss-def">Extremely loose and aggressive; bluffs and raises relentlessly.</span></div>
+          <div class="gloss-row"><span class="gloss-term">nit</span><span class="gloss-def">Ultra-tight; only plays premium hands.</span></div>
+          <div class="gloss-row"><span class="gloss-term">balanced</span><span class="gloss-def">Mixes up its play — hard to read.</span></div>
+          <div class="gloss-row"><span class="gloss-term">trapper</span><span class="gloss-def">Plays strong hands slowly to lure you into betting (slow-play).</span></div>
+        </div>
+
+        <div class="gloss-section">
+          <h4>Hand rankings <span class="dim">(strongest first)</span></h4>
+          <div class="gloss-row"><span class="gloss-term">Straight Flush</span><span class="gloss-def">Five cards in sequence, all the same suit.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Four of a Kind</span><span class="gloss-def">Four cards of the same rank.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Full House</span><span class="gloss-def">Three of a kind plus a pair.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Flush</span><span class="gloss-def">Five cards of the same suit (not in sequence).</span></div>
+          <div class="gloss-row"><span class="gloss-term">Straight</span><span class="gloss-def">Five cards in sequence (mixed suits).</span></div>
+          <div class="gloss-row"><span class="gloss-term">Three of a Kind</span><span class="gloss-def">Three cards of the same rank.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Two Pair</span><span class="gloss-def">Two different pairs.</span></div>
+          <div class="gloss-row"><span class="gloss-term">One Pair</span><span class="gloss-def">Two cards of the same rank.</span></div>
+          <div class="gloss-row"><span class="gloss-term">High Card</span><span class="gloss-def">None of the above — the highest card plays.</span></div>
+          <p class="gloss-intro">Short Deck (6+): a Flush beats a Full House, and A-6-7-8-9 counts as a straight.</p>
+        </div>
+
+        <div class="gloss-section">
+          <h4>Game setup</h4>
+          <div class="gloss-row"><span class="gloss-term">Tournament</span><span class="gloss-def">Blinds rise over time; bust and you're out (you'll be offered a rebuy here).</span></div>
+          <div class="gloss-row"><span class="gloss-term">Cash</span><span class="gloss-def">Blinds stay fixed; chips act like money and you can top up any time.</span></div>
+          <div class="gloss-row"><span class="gloss-term">Blind level</span><span class="gloss-def">How many hands play before the blinds increase (tournament only).</span></div>
+          <div class="gloss-row"><span class="gloss-term">Short deck</span><span class="gloss-def">Plays with a 36-card deck (2–5 removed): more big hands and adjusted rankings.</span></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=6"></script>
 </body>
 </html>
