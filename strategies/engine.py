@@ -200,10 +200,10 @@ class DesignedBotStrategy(BotStrategy):
                     return self._make_call(player.chips, min_call)
             return PlayerAction.FOLD, 0
 
-        # ── Opening (min_call == 0) ──
+        # ── Opening (min_call == 0): the big-blind option. With nothing to
+        # call, a weak hand checks its option instead of folding for free. ──
         if not in_range and score < threshold and not is_premium:
-            self.image.record_preflop_fold()
-            return PlayerAction.FOLD, 0
+            return PlayerAction.CHECK, 0
 
         self.image.record_preflop_enter()
 
@@ -243,7 +243,8 @@ class DesignedBotStrategy(BotStrategy):
         if self._position in ('BTN', 'CO', 'SB') and random.random() < 0.15:
             return self._make_call(player.chips, min_call)
 
-        return PlayerAction.FOLD, 0
+        # Nothing to call → check the option rather than fold for free.
+        return PlayerAction.CHECK, 0
 
     # ── Postflop ─────────────────────────────────────────────────────────────
 

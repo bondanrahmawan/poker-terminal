@@ -87,8 +87,10 @@ class TerminalPlayer(Player):
 
         # Pre-compute bet shortcuts
         min_raise_total = min(self.chips, min_raise + min_call)
-        half_pot  = max(min_raise_total, (pot_size // 2) + min_call)
-        full_pot  = max(min_raise_total, pot_size + min_call)
+        # A pot-sized raise = call the outstanding bet, then raise by the
+        # resulting pot; a half-pot raise by half of it.
+        half_pot  = max(min_raise_total, min_call + (pot_size + min_call) // 2)
+        full_pot  = max(min_raise_total, min_call + (pot_size + min_call))
         shortcuts = {
             'min':  min_raise_total,
             'half': min(self.chips, half_pot),
