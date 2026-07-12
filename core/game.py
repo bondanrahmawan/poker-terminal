@@ -607,7 +607,10 @@ class Game:
         for p, street in folded:
             self.log(f"{p.name:<{self._NAME_W}} folded on {street}")
 
-        self.pot_manager.calculate_pots([p.player_id for p in self.players if p.is_active])
+        self.pot_manager.calculate_pots(
+            [p.player_id for p in self.players if p.is_active],
+            [p.player_id for p in self.players if p.is_all_in],
+        )
 
         # Evaluate active players
         hand_scores: Dict[str, Tuple[tuple, str, str]] = {}

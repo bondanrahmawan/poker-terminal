@@ -401,12 +401,27 @@ class TestPotManager:
         pm.add_contribution("p1", 50)  # All-in
         pm.add_contribution("p2", 100)  # Covers
         pm.add_contribution("p3", 100)  # Covers
-        pm.calculate_pots(["p1", "p2", "p3"])
+        pm.calculate_pots(["p1", "p2", "p3"], ["p1"])
 
         # Should have main pot (50*3=150) and side pot (50*2=100)
         assert len(pm.pots) == 2
         assert pm.pots[0].amount == 150  # Main pot
         assert pm.pots[1].amount == 100  # Side pot
+
+    def test_no_side_pot_from_folds_without_all_in(self):
+        """Folding for less than others shouldn't split off a side pot - only
+        an all-in cap should. Regression test: p1/p2 folded for less than the
+        two remaining players, but nobody is all-in, so it must be one pot."""
+        pm = PotManager()
+        pm.add_contribution("p1", 10)   # folded (SB)
+        pm.add_contribution("p2", 20)   # folded (BB)
+        pm.add_contribution("p3", 90)   # active, reached showdown
+        pm.add_contribution("p4", 90)   # active, reached showdown
+        pm.calculate_pots(["p3", "p4"], [])  # nobody all-in
+
+        assert len(pm.pots) == 1
+        assert pm.pots[0].amount == 210
+        assert pm.pots[0].eligible_players == {"p3", "p4"}
 
 
 class TestGameState:

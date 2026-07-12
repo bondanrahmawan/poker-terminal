@@ -19,47 +19,55 @@ class PotManager:
             self.contributions[player_id] = 0
         self.contributions[player_id] += amount
 
-    def calculate_pots(self, active_player_ids: List[str]):
+    def calculate_pots(self, active_player_ids: List[str], all_in_player_ids: List[str] = None):
         """
         Builds the main pot and side pots based on player contributions.
         Should be called at the end of the hand (showdown) or when dealing with all-ins.
-        
+
+        Side pot boundaries are set only by all-in caps. A player who folded
+        for less than others just leaves their chips in whichever pot(s) they
+        reached - it doesn't split off a pot of its own.
+
         Args:
             active_player_ids: List of player IDs who haven't folded (eligible to win pots)
+            all_in_player_ids: List of player IDs who are all-in (capped, can't contribute more)
         """
         self.pots = []
         contribs = {pid: amt for pid, amt in self.contributions.items() if amt > 0}
+        if not contribs:
+            return
 
-        while contribs:
-            # Find the smallest contribution level
-            min_contrib = min(contribs.values())
+        all_in_player_ids = set(all_in_player_ids or [])
+        active_set = set(active_player_ids)
+        caps = sorted({amt for pid, amt in contribs.items() if pid in all_in_player_ids})
+
+        prev_level = 0
+        for cap in caps + [max(contribs.values())]:
+            level_amount = cap - prev_level
+            if level_amount <= 0:
+                prev_level = cap
+                continue
 
             pot = Pot()
-            pot.amount = 0
-            players_at_this_level = []
+            contributors_at_level = []
+            for pid, total in contribs.items():
+                take = min(level_amount, total - prev_level)
+                if take <= 0:
+                    continue
+                pot.amount += take
+                contributors_at_level.append(pid)
 
-            # Collect contributions at this level
-            for pid in list(contribs.keys()):
-                contribs[pid] -= min_contrib
-                pot.amount += min_contrib
-                players_at_this_level.append(pid)
+            # All players who contributed at this level are eligible for this pot.
+            # Folded players forfeit their share to remaining eligible players.
+            active_at_level = [pid for pid in contributors_at_level if pid in active_set]
 
-                if contribs[pid] == 0:
-                    del contribs[pid]
-
-            # All players who contributed at this level are eligible for this pot
-            # Folded players forfeit their share to remaining eligible players
-            active_at_level = [pid for pid in players_at_this_level if pid in active_player_ids]
-            
-            # If all players at this level folded (shouldn't happen normally), 
+            # If all players at this level folded (shouldn't happen normally),
             # give to remaining active players
-            if not active_at_level:
-                pot.eligible_players = set(active_player_ids)
-            else:
-                pot.eligible_players = set(active_at_level)
+            pot.eligible_players = set(active_at_level) if active_at_level else active_set
 
             if pot.amount > 0:
                 self.pots.append(pot)
+            prev_level = cap
 
     def total_pot(self) -> int:
         return sum(amt for amt in self.contributions.values())
