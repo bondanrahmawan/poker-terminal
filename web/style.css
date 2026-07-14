@@ -309,8 +309,10 @@ body.hide-styles .seat .style { display: none; }
   border: 1px solid var(--border); border-radius: 8px; background: var(--surface-3);
 }
 .hand-summary.win { border-color: var(--pos); }
+.hand-summary.folded { border-style: dashed; }
 .hand-summary .hs-headline { font-weight: 600; font-size: 0.95rem; }
 .hand-summary.win .hs-headline { color: var(--pos); }
+.hand-summary.folded .hs-headline { color: var(--text-dim); font-weight: 500; }
 .hand-summary .hs-line { font-size: 0.78rem; margin-top: 0.15rem; }
 
 /* ── Confirm dialog ───────────────────────────────────────────────────────── */

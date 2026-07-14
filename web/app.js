@@ -1438,7 +1438,10 @@ function renderHandSummary(v, bar) {
   fillSummaryTotals(card, v);
 }
 
-async function fillSummaryTotals(card, v) {
+// finalize=true (hand over) shows the per-hand delta and advances the running
+// baseline; finalize=false (folded mid-hand) shows only the session net, since
+// the hand isn't resolved yet.
+async function fillSummaryTotals(card, v, finalize = true) {
   try {
     const res = await fetch(`/games/${S.gameId}/stats`);
     if (!res.ok) return;
@@ -1448,20 +1451,35 @@ async function fillSummaryTotals(card, v) {
     const me = (v.players || []).find((p) => p.is_you);
     if (!s || !me) return;
     const net = me.chips - (s.total_invested || 0);
-    // Compute the per-hand delta once per hand; reuse it across re-renders.
-    if (summaryHand !== v.hand_number) {
-      lastDelta = net - prevHandNet;
-      prevHandNet = net;
-      summaryHand = v.hand_number;
-    }
     const fmt = (n) => (n >= 0 ? `+${n}` : `${n}`);
+    let prefix = "";
+    if (finalize) {
+      // Compute the per-hand delta once per hand; reuse it across re-renders.
+      if (summaryHand !== v.hand_number) {
+        lastDelta = net - prevHandNet;
+        prevHandNet = net;
+        summaryHand = v.hand_number;
+      }
+      prefix = `This hand ${fmt(lastDelta)} · `;
+    }
     const line = card.querySelector(".hs-line");
     if (line) {
       line.textContent =
-        `This hand ${fmt(lastDelta)} · Session ${fmt(net)} · ` +
-        `${data.hand_count} hand${data.hand_count === 1 ? "" : "s"}`;
+        `${prefix}Session ${fmt(net)} · ${data.hand_count} hand${data.hand_count === 1 ? "" : "s"}`;
     }
   } catch (e) { /* best effort — the headline still shows */ }
+}
+
+// Shown after you fold while the bots play the hand out (#6 interim state).
+function renderFoldedInterim(v, bar) {
+  const card = document.createElement("div");
+  card.className = "hand-summary folded";
+  card.innerHTML =
+    `<div class="hs-headline"></div>` +
+    `<div class="hs-line dim">Session — · hand ${v.hand_number}</div>`;
+  card.querySelector(".hs-headline").textContent = "You folded — hand in progress";
+  bar.appendChild(card);
+  fillSummaryTotals(card, v, false);
 }
 
 function renderActionBar(v) {
@@ -1521,6 +1539,13 @@ function renderActionBar(v) {
         btn.textContent = `Next hand (${remain})`;
       }, 1000);
     }
+    return;
+  }
+  // Hand still live but not our turn: if we've folded, show a status card right
+  // away instead of leaving the bar empty until the hand finishes.
+  const me = (v.players || []).find((p) => p.is_you);
+  if (me && !me.is_active && !me.is_all_in && me.chips > 0) {
+    renderFoldedInterim(v, bar);
   }
 }
 
