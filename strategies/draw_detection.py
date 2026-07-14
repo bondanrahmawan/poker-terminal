@@ -12,6 +12,7 @@ from typing import List, Tuple, Optional
 from collections import Counter
 from core.card import Card
 from core.evaluator import HandEvaluator, HandRank
+from strategies.hand_score import score_starting_hand
 
 
 # ── Draw information ─────────────────────────────────────────────────────────
@@ -229,6 +230,18 @@ _OUTS_EQUITY_TURN = {
 }
 
 
+def preflop_equity(hole_cards: List[Card], num_opponents: int = 1) -> float:
+    """Heads-up equity mapped from the 0-100 starting-hand score, then
+    scaled for multiway pots. The multiway exponent is softened from the pure
+    independent-opponent value n to 1 + 0.6*(n-1): shared-board correlation
+    makes true multiway equity higher than hu**n, which otherwise badly
+    underestimates weak hands (calibrated in Task 6: 5pp -> sub-4pp MAE)."""
+    score = score_starting_hand(hole_cards[0], hole_cards[1])
+    hu = 0.35 + 0.50 * (score / 100.0)      # AA(100)->0.85, 72o(5)->0.375
+    n = max(1, num_opponents)
+    return max(0.0, min(1.0, hu ** (1 + 0.6 * (n - 1))))
+
+
 def advanced_equity(hole_cards: List[Card], community: List[Card],
                     num_opponents: int = 1, short_deck: bool = False) -> float:
     """
@@ -238,10 +251,7 @@ def advanced_equity(hole_cards: List[Card], community: List[Card],
     Multiplayer pots reduce equity (more chances someone has you beat).
     """
     if not community:
-        # Preflop — use simple heuristic
-        ranks = [c.rank for c in hole_cards]
-        is_strong = max(ranks) > 10 or abs(ranks[0] - ranks[1]) <= 1
-        return 0.55 if is_strong else 0.32
+        return preflop_equity(hole_cards, num_opponents)
 
     draw = detect_draws(hole_cards, community, short_deck)
 
@@ -283,18 +293,27 @@ def advanced_equity(hole_cards: List[Card], community: List[Card],
 
 def equity_vs_range(hole_cards: List[Card], community: List[Card],
                     opponent_range: float = 0.3, num_opponents: int = 1,
-                    short_deck: bool = False) -> float:
+                    short_deck: bool = False, base_equity: float = None) -> float:
     """
-    Estimate equity against a theoretical opponent range.
+    Adjust equity for a known opponent looseness — two-sided and centered so an
+    average opponent leaves equity unchanged.
 
-    opponent_range: fraction of hands opponent plays (0.1 = very tight, 0.8 = very loose)
-    This is a rough Monte-Carlo-style estimate without full simulation.
+    opponent_range: fraction of hands the opponent plays (0.1 = very tight,
+    0.9 = very loose). A loose range means the opponent holds weaker hands on
+    average, so our equity rises; a tight range means stronger hands, so it
+    falls. At 0.5 the adjustment is zero.
+
+    base_equity: if given, the adjustment is applied on top of it (so a more
+    accurate Monte-Carlo estimate is preserved); otherwise advanced_equity is
+    used as the base.
     """
-    base = advanced_equity(hole_cards, community, num_opponents, short_deck)
+    base = (base_equity if base_equity is not None
+            else advanced_equity(hole_cards, community, num_opponents, short_deck))
 
-    # Tighter opponent ranges mean they have stronger hands on average
-    range_strength = 1.0 - opponent_range  # 0.3 range → 0.7 strength
-    adjustment = -0.10 * range_strength * num_opponents
+    # +/- around an average (0.5) opponent; capped so multiway pots can't swing
+    # the estimate wildly.
+    adjustment = 0.15 * (opponent_range - 0.5) * min(num_opponents, 2)
+    adjustment = max(-0.15, min(0.15, adjustment))
 
     return max(0.0, min(1.0, base + adjustment))
 

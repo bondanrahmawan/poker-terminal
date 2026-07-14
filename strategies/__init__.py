@@ -46,7 +46,10 @@ def register(name: str):
 
 # ── Re-export new modules for convenience ────────────────────────────────────
 from strategies.opponent_model import OpponentTracker, OpponentStats
-from strategies.draw_detection import detect_draws, advanced_equity, monte_carlo_equity, DrawInfo
+from strategies.draw_detection import (
+    detect_draws, advanced_equity, monte_carlo_equity, preflop_equity,
+    equity_vs_range, DrawInfo,
+)
 from strategies.betsizing import (
     BetSize, calc_bet_size, choose_bet_size, choose_raise_size, stack_depth_label,
 )

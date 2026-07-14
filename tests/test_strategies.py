@@ -16,7 +16,7 @@ from strategies.engine import (
 )
 from strategies.profile import PROFILES, StyleProfile
 from strategies.hand_score import score_starting_hand
-from strategies.difficulty import DIFFICULTY_LEVELS, NORMAL, HARD, EASY, mistakes_for, MISTAKE_PROFILES
+from strategies.difficulty import DIFFICULTY_LEVELS, NORMAL, HARD, EASY, EXPERT, PERFECT, mistakes_for, MISTAKE_PROFILES
 from strategies.utils import estimate_equity, pot_odds, position_adjustment, calc_raise_amount
 
 
@@ -187,12 +187,14 @@ class TestHandScore:
 
 class TestUtils:
     def test_estimate_equity_preflop_strong(self):
+        # Phase 4: preflop equity maps from the 0-100 score table; AA ~0.85.
         eq = estimate_equity(STRONG_HAND, [])
-        assert eq == 0.55
+        assert 0.82 <= eq <= 0.88
 
     def test_estimate_equity_preflop_weak(self):
+        # 72o ~0.375.
         eq = estimate_equity(WEAK_HAND, [])
-        assert eq == 0.32
+        assert 0.33 <= eq <= 0.42
 
     def test_estimate_equity_postflop(self):
         community = [
@@ -628,6 +630,14 @@ class TestMistakesFor:
         import dataclasses
         with pytest.raises(dataclasses.FrozenInstanceError):
             MISTAKE_PROFILES['hard'].label = 'mutated'
+
+    def test_range_aware_equity_gated_to_expert(self):
+        # Phase 4 Task 3: only expert/perfect discount equity by observed
+        # opponent looseness.
+        assert mistakes_for(EXPERT).range_aware_equity is True
+        assert mistakes_for(PERFECT).range_aware_equity is True
+        assert mistakes_for(HARD).range_aware_equity is False
+        assert mistakes_for(NORMAL).range_aware_equity is False
 
 
 # ---------------------------------------------------------------------------

@@ -18,11 +18,12 @@ from strategies.engine import (
 )
 from strategies.profile import PROFILES
 from strategies.hand_score import score_starting_hand
-from strategies.difficulty import EXPERT
+from strategies.difficulty import EXPERT, HARD
 
 # New modules
 from strategies.opponent_model import OpponentTracker, OpponentStats
-from strategies.draw_detection import detect_draws, advanced_equity, DrawInfo
+from strategies.draw_detection import detect_draws, advanced_equity, equity_vs_range, DrawInfo
+import strategies.engine as engine_module
 from strategies.betsizing import (
     BetSize, calc_bet_size, choose_bet_size, choose_raise_size, stack_depth_label,
 )
@@ -291,12 +292,15 @@ class TestGutshotDetection:
 
 class TestAdvancedEquity:
     def test_preflop_strong(self):
+        # Phase 4: preflop equity now maps from the 0-100 score table.
+        # AA (score 100) -> heads-up ~0.85.
         eq = advanced_equity(STRONG_HAND, [])
-        assert eq == 0.55
+        assert 0.82 <= eq <= 0.88
 
     def test_preflop_weak(self):
+        # 72o (score 5) -> heads-up ~0.375.
         eq = advanced_equity(WEAK_HAND, [])
-        assert eq == 0.32
+        assert 0.33 <= eq <= 0.42
 
     def test_postflop_strong_hand(self):
         community = [
@@ -321,6 +325,112 @@ class TestAdvancedEquity:
         eq_1 = advanced_equity(hole, board, num_opponents=1)
         eq_3 = advanced_equity(hole, board, num_opponents=3)
         assert eq_3 < eq_1  # More opponents = less equity
+
+
+class TestPreflopEquity:
+    """Phase 4 Task 2 — preflop equity mapped from the 0-100 score table."""
+
+    def _hand(self, r1, r2, suited=False):
+        s2 = Suit.SPADES if suited else Suit.HEARTS
+        return [Card(r1, Suit.SPADES), Card(r2, s2)]
+
+    def test_monotone_in_score(self):
+        from strategies.draw_detection import preflop_equity
+        aa  = preflop_equity(self._hand(Rank.ACE, Rank.ACE))
+        kk  = preflop_equity(self._hand(Rank.KING, Rank.KING))
+        aks = preflop_equity(self._hand(Rank.ACE, Rank.KING, suited=True))
+        qjo = preflop_equity(self._hand(Rank.QUEEN, Rank.JACK))
+        o72 = preflop_equity(self._hand(Rank.SEVEN, Rank.TWO))
+        assert aa > kk > aks > qjo > o72
+
+    def test_headsup_aa_range(self):
+        from strategies.draw_detection import preflop_equity
+        eq = preflop_equity(self._hand(Rank.ACE, Rank.ACE))
+        assert 0.82 <= eq <= 0.88
+
+    def test_headsup_72o_range(self):
+        from strategies.draw_detection import preflop_equity
+        eq = preflop_equity(self._hand(Rank.SEVEN, Rank.TWO))
+        assert 0.33 <= eq <= 0.42
+
+    def test_multiway_scales_down(self):
+        from strategies.draw_detection import preflop_equity
+        hu = preflop_equity(self._hand(Rank.ACE, Rank.ACE), num_opponents=1)
+        three = preflop_equity(self._hand(Rank.ACE, Rank.ACE), num_opponents=3)
+        assert three < hu
+        assert three > 0.55
+
+
+class TestRangeAwareEquity:
+    """Phase 4 Task 4 — equity_vs_range wired into postflop, expert-gated."""
+
+    FLOP = [Card(Rank.KING, Suit.CLUBS), Card(Rank.SEVEN, Suit.DIAMONDS),
+            Card(Rank.TWO, Suit.HEARTS)]
+    HOLE = [Card(Rank.QUEEN, Suit.SPADES), Card(Rank.JACK, Suit.SPADES)]
+
+    def test_equity_vs_range_monotone(self):
+        # A tighter opponent range (they have stronger hands) lowers our equity.
+        tight = equity_vs_range(self.HOLE, self.FLOP, opponent_range=0.15)
+        loose = equity_vs_range(self.HOLE, self.FLOP, opponent_range=0.75)
+        assert tight < loose
+
+    def _seed_opp(self, strategy, vpip):
+        puts = round(vpip * 20)
+        strategy.tracker._stats['Opp'] = OpponentStats(
+            opportunities_voluntary=20, voluntary_puts=puts, total_hands_seen=20)
+
+    def _raw_equity_for(self, difficulty, vpip):
+        strategy = BalancedStrategy(difficulty=difficulty)
+        self._seed_opp(strategy, vpip)
+        captured = {'calls': 0, 'raw': None}
+        real = engine_module.equity_vs_range
+
+        def spy(*args, **kwargs):
+            captured['calls'] += 1
+            captured['raw'] = real(*args, **kwargs)
+            return captured['raw']
+
+        engine_module.equity_vs_range = spy
+        try:
+            # Range-aware equity only engages when facing a bet.
+            gs = state(min_call=50, pot_size=100, community_cards=self.FLOP,
+                       num_active=2, self_name='Bot1',
+                       players_info=[('Bot1', 1000, True), ('Opp', 1000, True)])
+            strategy.decide(gs, make_view(hole_cards=self.HOLE))
+        finally:
+            engine_module.equity_vs_range = real
+        return captured
+
+    def test_expert_discounts_by_opponent_range(self):
+        tight = self._raw_equity_for(EXPERT, vpip=0.15)
+        loose = self._raw_equity_for(EXPERT, vpip=0.75)
+        assert tight['calls'] == 1 and loose['calls'] == 1
+        assert tight['raw'] < loose['raw']
+
+    def test_hard_ignores_opponent_range(self):
+        res = self._raw_equity_for(HARD, vpip=0.15)
+        assert res['calls'] == 0  # flag False -> flat equity, no range discount
+
+    def test_expert_flat_equity_when_not_facing_bet(self):
+        # No bet to face (min_call=0) -> range-aware equity does not engage.
+        strategy = BalancedStrategy(difficulty=EXPERT)
+        self._seed_opp(strategy, vpip=0.15)
+        captured = {'calls': 0}
+        real = engine_module.equity_vs_range
+
+        def spy(*args, **kwargs):
+            captured['calls'] += 1
+            return real(*args, **kwargs)
+
+        engine_module.equity_vs_range = spy
+        try:
+            gs = state(min_call=0, pot_size=100, community_cards=self.FLOP,
+                       num_active=2, self_name='Bot1',
+                       players_info=[('Bot1', 1000, True), ('Opp', 1000, True)])
+            strategy.decide(gs, make_view(hole_cards=self.HOLE))
+        finally:
+            engine_module.equity_vs_range = real
+        assert captured['calls'] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -785,7 +895,10 @@ class TestFoldEquityNotAddedToCallDecision:
 
     def test_no_bet_to_face_still_bets_with_made_hand(self):
         strategy = self._make_strategy_with_foldy_opponent()
-        hole = [Card(Rank.NINE, Suit.SPADES), Card(Rank.TWO, Suit.HEARTS)]
+        # Top pair (a clear made hand). Phase 4 range-aware equity (this bot is
+        # PERFECT) correctly makes marginal second pair a check, so we assert
+        # the fold-equity-applies-to-bets property with an unambiguous made hand.
+        hole = [Card(Rank.KING, Suit.SPADES), Card(Rank.QUEEN, Suit.HEARTS)]
         board = [Card(Rank.NINE, Suit.CLUBS), Card(Rank.FIVE, Suit.DIAMONDS),
                  Card(Rank.KING, Suit.DIAMONDS)]
         gs = state(min_call=0, pot_size=100, community_cards=board,

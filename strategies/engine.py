@@ -20,7 +20,7 @@ from core.card import Card
 from strategies import BotStrategy, PlayerView, register
 from strategies import (
     OpponentTracker, TableImage, TiltState,
-    detect_draws, advanced_equity, monte_carlo_equity, DrawInfo,
+    detect_draws, advanced_equity, monte_carlo_equity, equity_vs_range, DrawInfo,
     BetSize, choose_bet_size, choose_raise_size, stack_depth_label,
     should_slow_play, should_semi_bluff,
     hand_in_range, should_3bet, position_to_range, should_defend_bb,
@@ -363,6 +363,18 @@ class DesignedBotStrategy(BotStrategy):
             )
         else:
             raw_equity = advanced_equity(player.hole_cards, community, num_active - 1)
+        # Range-aware equity (expert/perfect only): when facing a bet, shift
+        # equity by the modeled opponents' observed looseness — aggression from
+        # a tight field signals stronger hands (lower our equity); a loose field
+        # signals weaker hands (raise it). Applied on top of raw_equity so the
+        # Monte-Carlo estimate on turn/river is preserved.
+        if self.mistakes.range_aware_equity and modeled_ids and min_call > 0:
+            ranges = [self.tracker.get_stats(oid).vpip for oid in modeled_ids]
+            opp_range = max(0.10, min(0.90, sum(ranges) / len(ranges)))
+            raw_equity = equity_vs_range(
+                player.hole_cards, community, opponent_range=opp_range,
+                num_opponents=num_active - 1, base_equity=raw_equity,
+            )
         equity = self._noisy_equity(raw_equity)
         equity += exploit['equity_boost']
         equity = min(1.0, max(0.0, equity))

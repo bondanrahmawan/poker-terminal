@@ -6,6 +6,7 @@ from typing import List
 from core.card import Card
 from core.evaluator import HandEvaluator
 from strategies.draw_detection import advanced_equity as _advanced_equity
+from strategies.draw_detection import preflop_equity as _preflop_equity
 
 # Estimated equity per hand rank (index = HandRank value 0..9)
 # 0 = unset, 1 = High Card, ..., 9 = Straight Flush / Royal Flush
@@ -20,9 +21,7 @@ def estimate_equity(hole_cards: List[Card], community_cards: List[Card],
     Falls back to simple preflop heuristic if no community cards.
     """
     if len(community_cards) == 0:
-        ranks = [c.rank for c in hole_cards]
-        is_strong = max(ranks) > 10 or abs(ranks[0] - ranks[1]) <= 1
-        return 0.55 if is_strong else 0.32
+        return _preflop_equity(hole_cards, num_opponents)
     return _advanced_equity(hole_cards, community_cards, num_opponents, short_deck)
 
 
