@@ -108,6 +108,16 @@ class GameSession:
             self.game.stats[human.player_id]["total_invested"] += starting
             self.game.stats[human.player_id]["rebuys"] += 1
 
+        # Cash mode keeps the table full: busted bots automatically buy back in
+        # for one starting stack (tournament mode leaves them eliminated). The
+        # rebuy counts as invested so net/stats stay honest.
+        if self.settings.get("game_mode", "tournament") == "cash":
+            for p in self.game.players:
+                if p.player_id != HUMAN_ID and p.chips == 0:
+                    p.chips = starting
+                    self.game.stats[p.player_id]["total_invested"] += starting
+                    self.game.stats[p.player_id]["rebuys"] += 1
+
         active = [p for p in self.game.players if p.chips > 0]
         if len(active) <= 1:
             self.persist()

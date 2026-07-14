@@ -310,6 +310,30 @@ def test_cash_mode_no_blind_escalation():
     assert state["blinds"]["small"] == SETTINGS["big_blind"] // 2
 
 
+def test_cash_mode_busted_bot_rebuys():
+    # Cash keeps the table full: a busted bot buys back in on the next hand.
+    game_id = client.post("/games", json=dict(SETTINGS, game_mode="cash", num_bots=3))\
+        .json()["game_id"]
+    session = client.app.state.manager.get(game_id)
+    bot = next(p for p in session.game.players if p.player_id != "h1")
+    bot.chips = 0
+    session.start_next_hand()
+    # Rebought and back in play (chips may be down a blind from the new hand).
+    assert bot.chips > 0
+    assert session.game.stats[bot.player_id]["rebuys"] == 1
+
+
+def test_tournament_mode_busted_bot_stays_out():
+    # Tournament eliminates: a busted bot is not rebought.
+    game_id = client.post("/games", json=dict(SETTINGS, game_mode="tournament", num_bots=3))\
+        .json()["game_id"]
+    session = client.app.state.manager.get(game_id)
+    bot = next(p for p in session.game.players if p.player_id != "h1")
+    bot.chips = 0
+    session.start_next_hand()
+    assert bot.chips == 0
+
+
 # ── Simulation jobs (M4) ──────────────────────────────────────────────────────
 
 _STOPPED_RESULT = {
