@@ -15,6 +15,7 @@ const S = {
 
 let wsRetryDelay = 1000; // reconnect backoff: 1s, 2s, 4s … cap 10s
 let handWinnings = {};   // pid → {pid, name, amount}; reset each hand (V2 summary)
+let handReveals = {};    // pid → {cards, hand_name}; showdown reveals, reset each hand
 let statsThenQuit = false; // stats modal opened via Quit → closing it leaves the table
 let autoDealTimer = null;  // countdown interval when Auto-deal is on
 
@@ -293,6 +294,7 @@ function newGame() {
   });
   wsRetryDelay = 1000;
   handWinnings = {};
+  handReveals = {};
   resetSessionMeta();
   el("history").innerHTML = "";
   el("caption").textContent = "";
@@ -315,7 +317,15 @@ async function pump() {
     // previous hand's board here — otherwise its community cards linger, and the
     // last hand's folded/dimmed seats stay dimmed, while the new hand animates.
     if (ev.type === "hand_started") { clearCommunity(); clearHole(); resetSeatStates(); }
-    const line = appendHistory(ev);           // every event (tracks winnings, returns caption line)
+    // Reveal the flop/turn/river on the felt in step with its caption. Without
+    // this the board is only repainted from the held-back view (once the queue
+    // drains), so a folded hand — whose whole playout arrives as one event
+    // batch — shows an empty felt until every card snaps in at the end.
+    if (ev.type === "street_started" && ev.data.community && ev.data.community.length) {
+      paintCommunity(ev.data.community);
+    }
+    const line = appendHistory(ev);           // every event (tracks winnings/reveals, returns caption line)
+    if (ev.type === "hole_cards_shown") revealSeat(ev.data.player_id);
     if (line) showCaption(ev, line);          // banner + seat highlight
     // No caption → nothing to read → no dwell (kills hand-start dead air).
     await sleep(S.skip || !line ? 0 : dwellFor(ev));
@@ -416,11 +426,14 @@ function resetSeatStates() {
 function trackEvent(ev) {
   if (ev.type === "hand_started") {
     handWinnings = {};
+    handReveals = {};
   } else if (ev.type === "pot_awarded") {
     const d = ev.data;
     const w = handWinnings[d.player_id] || { pid: d.player_id, name: d.name, amount: 0 };
     w.amount += d.amount;
     handWinnings[d.player_id] = w;
+  } else if (ev.type === "hole_cards_shown") {
+    handReveals[ev.data.player_id] = { cards: ev.data.cards, hand_name: ev.data.hand_name };
   }
 }
 
@@ -1373,19 +1386,53 @@ function renderSeats(v) {
     div.dataset.pid = p.player_id;
     div.style.left = x + "%";
     div.style.top = y + "%";
+    // Showdown reveals ride on the seat DOM so they survive end-of-hand
+    // re-renders and reconnects; own cards stay in #hole, so skip is_you.
+    const reveal = !p.is_you ? handReveals[p.player_id] : null;
     div.innerHTML =
       `<div class="name">${esc(p.name)} ${badges.join(" ")}</div>` +
       (p.style ? `<div class="style">${esc(p.style)}</div>` : "") +
       `<div class="chips">${p.chips}</div>` +
-      `<div class="bet">${p.bet_this_round ? "bet " + p.bet_this_round : ""}</div>`;
+      `<div class="bet">${p.bet_this_round ? "bet " + p.bet_this_round : ""}</div>` +
+      `<div class="seat-cards">${reveal ? revealHTML(reveal) : ""}</div>`;
     seats.appendChild(div);
   });
 }
 
+// Face-up hole cards + best-hand label for a showdown reveal, shared by the
+// seat re-render (renderSeats) and the in-animation reveal (revealSeat).
+function revealHTML(r) {
+  const cards = r.cards.map((c) => {
+    const red = c.suit === "H" || c.suit === "D";
+    return `<span class="mini-card${red ? " red" : ""}">${c.display}</span>`;
+  }).join("");
+  return `<div class="mc-row">${cards}</div>` +
+    (r.hand_name ? `<div class="mc-name">${esc(r.hand_name)}</div>` : "");
+}
+
+// Flip a player's cards up on their seat the moment their "shows …" caption
+// animates, instead of waiting for the held-back view to re-render every seat.
+function revealSeat(pid) {
+  const youId = S.view && S.view.you ? S.view.you.player_id : null;
+  if (pid === youId) return;                       // own cards live in #hole
+  const r = handReveals[pid];
+  if (!r) return;
+  const box = el("seats").querySelector(`.seat[data-pid="${pid}"] .seat-cards`);
+  if (box) box.innerHTML = revealHTML(r);
+}
+
 function renderCommunity(v) {
+  paintCommunity(v.community_cards || []);
+}
+
+// Paint the five board slots from an array of card dicts, filling the remainder
+// with empty slots. Shared by the held-back view (renderCommunity) and the
+// per-street animation in pump(), so the felt fills in progressively while a
+// folded hand plays out instead of snapping to all five cards at the very end.
+function paintCommunity(cards) {
   const slots = [];
   for (let i = 0; i < 5; i++) {
-    const c = v.community_cards[i];
+    const c = cards[i];
     slots.push(c ? cardHTML(c) : `<span class="card empty"></span>`);
   }
   el("community").innerHTML = slots.join("");

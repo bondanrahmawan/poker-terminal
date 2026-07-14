@@ -1,0 +1,630 @@
+<title>Poker, as Game Theory — Why the Best Strategy Depends on the Table</title>
+<style>
+  :root {
+    --bg:#0e1512; --panel:#16211c; --panel-2:#1b2a23; --line:#2a3a31;
+    --ink:#ece7d9; --muted:#9aa39b; --faint:#6b756d;
+    --brass:#c9a24b; --brass-dim:#a8863c;
+    --pos:#5fa574; --neg:#c05f52;
+    --mono: ui-monospace,'Cascadia Code','JetBrains Mono','SF Mono',Consolas,'Liberation Mono',monospace;
+    --serif: Georgia,'Iowan Old Style','Palatino Linotype','Times New Roman',serif;
+    --maxw: 940px; --measure: 66ch;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:#f2efe6; --panel:#fbf9f2; --panel-2:#f0ebdd; --line:#ddd6c5;
+      --ink:#1b221d; --muted:#5c655d; --faint:#8a9184;
+      --brass:#9a7414; --brass-dim:#7d5f10;
+      --pos:#3f7d55; --neg:#a8483c;
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0e1512; --panel:#16211c; --panel-2:#1b2a23; --line:#2a3a31;
+    --ink:#ece7d9; --muted:#9aa39b; --faint:#6b756d;
+    --brass:#c9a24b; --brass-dim:#a8863c; --pos:#5fa574; --neg:#c05f52;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg:#f2efe6; --panel:#fbf9f2; --panel-2:#f0ebdd; --line:#ddd6c5;
+    --ink:#1b221d; --muted:#5c655d; --faint:#8a9184;
+    --brass:#9a7414; --brass-dim:#7d5f10; --pos:#3f7d55; --neg:#a8483c;
+    color-scheme: light;
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--serif); line-height:1.62; font-size:17px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:var(--maxw); margin:0 auto; padding:0 22px 96px; }
+  .mono { font-family:var(--mono); }
+  p { max-width:var(--measure); }
+  a { color:var(--brass); text-underline-offset:3px; }
+
+  /* ---- masthead ---- */
+  header.mast { padding:64px 0 26px; border-bottom:1px solid var(--line); }
+  .eyebrow {
+    font-family:var(--mono); font-size:12.5px; letter-spacing:.22em;
+    text-transform:uppercase; color:var(--brass); margin:0 0 20px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow .suits { letter-spacing:.05em; color:var(--muted); }
+  h1 {
+    font-family:var(--mono); font-weight:700; font-size:clamp(30px,5.2vw,52px);
+    line-height:1.06; letter-spacing:-.01em; margin:0 0 20px; text-wrap:balance;
+    color:var(--ink);
+  }
+  h1 .hl { color:var(--brass); }
+  .dek { font-size:clamp(17px,2.2vw,20px); color:var(--muted); max-width:60ch; margin:0; }
+
+  .facts { display:flex; flex-wrap:wrap; gap:0; margin-top:34px;
+    border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--panel); }
+  .fact { flex:1 1 130px; padding:16px 18px; border-right:1px solid var(--line); }
+  .fact:last-child { border-right:0; }
+  .fact .n { font-family:var(--mono); font-size:23px; font-weight:700; color:var(--ink);
+    font-variant-numeric:tabular-nums; }
+  .fact .l { font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--faint); margin-top:4px; }
+
+  /* ---- sections ---- */
+  section { padding-top:58px; }
+  .kicker { font-family:var(--mono); font-size:12px; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--brass); margin:0 0 12px; }
+  h2 { font-family:var(--mono); font-weight:700; font-size:clamp(22px,3.4vw,30px);
+    line-height:1.15; margin:0 0 14px; letter-spacing:-.01em; text-wrap:balance; }
+  h2 .n { color:var(--faint); font-weight:400; margin-right:12px; }
+  .lede { color:var(--ink); }
+  .muted { color:var(--muted); }
+
+  figure { margin:26px 0 0; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:18px 16px 12px; }
+  figcaption { font-family:var(--mono); font-size:12.5px; color:var(--muted);
+    margin-top:12px; padding:0 4px; line-height:1.5; }
+  figcaption b { color:var(--ink); font-weight:700; }
+
+  .chart-head { display:flex; justify-content:space-between; align-items:baseline;
+    gap:12px; padding:2px 4px 14px; flex-wrap:wrap; }
+  .chart-title { font-family:var(--mono); font-size:13px; letter-spacing:.06em; color:var(--ink);
+    text-transform:uppercase; }
+  .chart-note { font-family:var(--mono); font-size:11.5px; color:var(--faint); }
+
+  .chart-scroll { overflow-x:auto; }
+  svg { display:block; width:100%; height:auto; }
+  svg text { font-family:var(--mono); }
+
+  /* legend / controls */
+  .legend { display:flex; flex-wrap:wrap; gap:8px 14px; padding:14px 4px 2px; }
+  .lg { display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:12px;
+    color:var(--muted); }
+  .sw { width:11px; height:11px; border-radius:2px; flex:none; }
+
+  .controls { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:4px 4px 16px; }
+  .controls .grp { display:flex; flex-wrap:wrap; gap:7px; }
+  button.chip, button.btn {
+    font-family:var(--mono); font-size:12px; cursor:pointer;
+    background:var(--panel-2); color:var(--muted); border:1px solid var(--line);
+    padding:6px 11px; border-radius:999px; transition:all .15s ease;
+  }
+  button.chip[aria-pressed="true"] { color:var(--bg); border-color:transparent; }
+  button.btn { border-radius:6px; color:var(--ink); }
+  button.btn:hover, button.chip:hover { border-color:var(--brass); }
+  button.btn.primary { background:var(--brass); color:#12100a; border-color:var(--brass); font-weight:700; }
+  button:focus-visible { outline:2px solid var(--brass); outline-offset:2px; }
+  .ctrl-label { font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--faint); margin-right:2px; }
+
+  .pull { border-left:2px solid var(--brass); padding:4px 0 4px 20px; margin:30px 0;
+    font-size:20px; line-height:1.4; color:var(--ink); max-width:56ch; }
+  .pull .mono { color:var(--brass); }
+
+  .empty { font-family:var(--mono); font-size:13px; color:var(--faint); text-align:center;
+    padding:48px 16px; }
+
+  footer { margin-top:70px; padding-top:26px; border-top:1px solid var(--line); }
+  footer p { color:var(--muted); font-size:14.5px; max-width:var(--measure); }
+  .meth { font-family:var(--mono); font-size:12.5px; color:var(--faint); line-height:1.7; }
+  code { font-family:var(--mono); background:var(--panel-2); padding:1px 6px; border-radius:4px;
+    font-size:.86em; color:var(--ink); }
+
+  .tip { position:fixed; pointer-events:none; z-index:50; opacity:0;
+    background:var(--panel); border:1px solid var(--line); border-radius:7px;
+    padding:8px 10px; font-family:var(--mono); font-size:12px; color:var(--ink);
+    box-shadow:0 8px 24px rgba(0,0,0,.35); transition:opacity .1s; max-width:230px; }
+  .tip b { color:var(--brass); }
+
+  @media (max-width:560px){
+    body{ font-size:16px; } .fact{ flex-basis:45%; }
+    .fact .n{ font-size:20px; }
+  }
+  @media (prefers-reduced-motion:reduce){ *{ animation-duration:.001ms!important; transition-duration:.001ms!important; } }
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <p class="eyebrow">Poker Terminal · Game-Theory Lab <span class="suits">♠ ♥ ♦ ♣</span></p>
+    <h1>There is no single best way to play poker. <span class="hl">The optimal strategy flips with the number of players.</span></h1>
+    <p class="dek">I built a Texas Hold'em engine, gave it eight named playing styles, and ran them against each other for hundreds of thousands of hands. The style that crushes heads-up is nearly the worst at a full table.</p>
+    <div class="facts" id="facts"></div>
+  </header>
+
+  <section id="intro">
+    <p class="lede">Eight archetypes — from the rock-tight <span class="mono">Nit</span> to the all-in <span class="mono">Maniac</span> — each a fixed set of parameters for how often to enter a pot, how hard to bet, and how much to bluff. No learning, no adaptation: pure strategies, so any edge comes from the strategy itself, not from out-thinking a specific opponent. That makes them a clean testbed for one question: <em>is any style actually dominant?</em></p>
+  </section>
+
+  <!-- 1. HEATMAP -->
+  <section id="s-matrix">
+    <p class="kicker">The payoff matrix</p>
+    <h2><span class="n">01</span>Who beats whom, one-on-one</h2>
+    <p>Every pair of styles played 500 heads-up matches. Each cell is how often the <b>row</b> style finishes with more chips than the <b>column</b> style — green means the row wins, red means it loses.</p>
+    <figure>
+      <div class="card">
+        <div class="chart-head">
+          <span class="chart-title">Heads-up win rate · row vs. column</span>
+          <span class="chart-note" id="matrix-note"></span>
+        </div>
+        <div class="chart-scroll"><div id="heatmap"></div></div>
+      </div>
+      <figcaption id="matrix-cap"></figcaption>
+    </figure>
+    <p style="margin-top:26px">One row is green almost all the way across: the <span class="mono" style="color:var(--neg)">Maniac</span>. Relentless aggression wins heads-up because there's only one opponent to fold, and someone has to defend a blind every hand. Pure pressure is a <em>dominant</em> strategy here — so what happens if strategies reproduce in proportion to how well they do?</p>
+  </section>
+
+  <!-- 2. EVOLUTION -->
+  <section id="s-eco">
+    <p class="kicker">Evolutionary dynamics</p>
+    <h2><span class="n">02</span>Let the winners breed</h2>
+    <p>Start with an equal population of all eight styles. Each generation, every style's share grows or shrinks based on its average result against the current mix — the standard <em>replicator dynamics</em> of evolutionary game theory. Watch the ecosystem settle.</p>
+    <figure>
+      <div class="card">
+        <div class="chart-head">
+          <span class="chart-title">Population share over generations</span>
+          <span class="chart-note" id="eco-winner"></span>
+        </div>
+        <div class="controls" id="eco-controls">
+          <div class="grp"><button class="btn primary" id="eco-play">▶ Replay</button></div>
+          <span class="ctrl-label" style="margin-left:6px">Remove a species:</span>
+          <div class="grp" id="eco-knockouts"></div>
+        </div>
+        <div class="chart-scroll"><div id="ecochart"></div></div>
+      </div>
+      <figcaption id="eco-cap"></figcaption>
+    </figure>
+    <p style="margin-top:26px">Because the Maniac beats everyone one-on-one, evolution collapses to a monoculture of Maniacs. Knock it out and the next-most-aggressive style inherits the table — a strict dominance ladder. Heads-up, aggression simply wins.</p>
+    <div class="pull">Then you seat eight of them at one table — and the story inverts.</div>
+  </section>
+
+  <!-- 3. THE TWIST (full ring) -->
+  <section id="s-ring">
+    <p class="kicker">The multiplayer twist</p>
+    <h2><span class="n">03</span>Eight to a table, cash game</h2>
+    <p>Same eight styles, now all seated together for 1,200 full-ring tables with rebuys. Ranked by profit per table (return on the starting stack). The heads-up hierarchy doesn't just weaken — it turns upside down.</p>
+    <figure>
+      <div class="card">
+        <div class="chart-head">
+          <span class="chart-title">Profit per table · return on starting stack</span>
+          <span class="chart-note">full ring · 8 players</span>
+        </div>
+        <div class="chart-scroll"><div id="barchart"></div></div>
+      </div>
+      <figcaption id="ring-cap"></figcaption>
+    </figure>
+    <p style="margin-top:26px">The <span class="mono" style="color:var(--neg)">Maniac</span> — unbeatable one-on-one — sinks to the bottom. With seven other players, someone almost always wakes up with a real hand, so relentless bluffing just donates chips. The patient <span class="mono" style="color:var(--pos)">Trapper</span> and <span class="mono" style="color:var(--pos)">Tight-Passive</span>, mediocre heads-up, win by folding the junk and letting the aggressors bleed each other dry. Table size <em>is</em> the game.</p>
+  </section>
+
+  <!-- 4. SWEEP -->
+  <section id="s-sweep">
+    <p class="kicker">Tuning a single knob</p>
+    <h2><span class="n">04</span>How much is too much?</h2>
+    <p>If style is a set of dials, where are the optimal settings? Here one style's <em>aggression</em> and <em>play-range</em> are swept from tight to reckless against a fixed field, measuring profit at each setting.</p>
+    <figure>
+      <div class="card">
+        <div class="chart-head">
+          <span class="chart-title">Profit vs. parameter value</span>
+          <span class="chart-note">shaded = noise band</span>
+        </div>
+        <div id="sweepwrap" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
+      </div>
+      <figcaption id="sweep-cap"></figcaption>
+    </figure>
+    <p style="margin-top:26px">Profit climbs with aggression, then the curve gets noisy near the top — there's a ceiling where more pressure stops paying. Play-range peaks in the middle: fold too much and the blinds eat you, play too much and you're in bad spots. Both dials have a sweet spot, and it isn't the extreme.</p>
+  </section>
+
+  <footer>
+    <p><b class="mono" style="color:var(--ink)">The takeaway.</b> "Best" is meaningless without a context. A strategy that is provably dominant in one game structure can be provably terrible in another — the number of players alone reverses the entire ranking. That's the core lesson of game theory, made visible in a card game.</p>
+    <p class="meth" id="methodology"></p>
+  </footer>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------------------------------------------------------------- DATA
+  // Baked-in results from the simulation engine (Normal difficulty, deep
+  // stacks). Everything below degrades gracefully if a field is empty:
+  // swap in fresh numbers from simulation_stats.json anytime.
+  var DATA = {
+    meta:{ difficulty:"Normal", stack:"deep", h2h_games_per_pair:500,
+           ava_tables:1650, sweep_note:"~50 tables/point" },
+    strategies:["TightAggressive","TightPassive","LooseAggressive","LoosePassive","Balanced","Nit","Maniac","Trapper"],
+    labels:["TAG","TP","LAG","LP","BAL","NIT","MAN","TRAP"],
+    // row beats column, %  (null on diagonal)
+    winMatrix:[
+      [null,38.4,25.0,39.4,31.0,80.2,21.8,36.8],
+      [61.6,null,30.8,20.4,43.8,85.2,34.2,44.2],
+      [75.0,69.2,null,58.2,71.0,94.8,34.6,55.8],
+      [60.6,79.6,41.8,null,58.8,84.8,31.2,80.2],
+      [69.0,56.2,29.0,41.2,null,92.2,21.4,51.0],
+      [19.8,14.8,5.2,15.2,7.8,null,7.4,14.4],
+      [78.2,65.8,65.4,68.8,78.6,92.6,null,65.0],
+      [63.2,55.8,44.2,19.8,49.0,85.6,35.0,null]
+    ],
+    // full-ring: profit per table as ROI on starting stack
+    ring:[
+      {k:"Trapper",roi:5.192},{k:"TightPassive",roi:4.191},{k:"TightAggressive",roi:0.731},
+      {k:"Balanced",roi:-0.105},{k:"LooseAggressive",roi:-0.392},{k:"Nit",roi:-0.851},
+      {k:"Maniac",roi:-2.255},{k:"LoosePassive",roi:-6.510}
+    ],
+    sweeps:{
+      aggression:[[0.1,-1.4262,2.00],[0.2,-0.6028,2.44],[0.3,0.1059,2.92],[0.4,0.3823,3.96],[0.5,0.2766,4.20],[0.6,1.2928,4.14],[0.7,0.9369,4.59],[0.8,0.8429,5.34],[0.9,1.1643,4.46],[1.0,1.7034,3.96]],
+      play_range:[[0.1,-0.9186,2.40],[0.2,0.6250,3.25],[0.3,0.5570,3.65],[0.4,-0.2354,3.13],[0.5,-0.5401,3.26],[0.6,1.7392,4.14],[0.7,-1.7855,3.20],[0.8,-0.0257,3.96],[0.9,-0.4960,4.78],[1.0,0.9064,4.87]]
+    }
+  };
+
+  // per-strategy categorical colors (distinct on both themes)
+  var COLORS = {
+    TightAggressive:"#9bb04a", TightPassive:"#4a97a6", LooseAggressive:"#dd8a3d",
+    LoosePassive:"#7d74b0", Balanced:"#d4a828", Nit:"#8b8f98",
+    Maniac:"#c8564a", Trapper:"#4f9e6a"
+  };
+
+  var SVGNS="http://www.w3.org/2000/svg";
+  function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function el(tag,attrs,text){ var e=document.createElementNS(SVGNS,tag);
+    if(attrs) for(var k in attrs) e.setAttribute(k,attrs[k]);
+    if(text!=null) e.textContent=text; return e; }
+  function svg(w,h){ var s=el("svg",{viewBox:"0 0 "+w+" "+h,preserveAspectRatio:"xMidYMid meet",
+    role:"img"}); s.style.maxWidth=(w)+"px"; s.style.margin="0 auto"; return s; }
+  function clear(node){ while(node.firstChild) node.removeChild(node.firstChild); }
+  var reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+
+  // shared tooltip
+  var tip=document.getElementById("tip");
+  function showTip(html,x,y){ tip.innerHTML=html; tip.style.opacity="1";
+    var w=tip.offsetWidth,h=tip.offsetHeight;
+    tip.style.left=Math.min(x+14,innerWidth-w-8)+"px";
+    tip.style.top=Math.max(8,y-h-12)+"px"; }
+  function hideTip(){ tip.style.opacity="0"; }
+
+  // heat color: 0=red .. 50=neutral .. 100=green
+  function heat(p){
+    var pos=css("--pos"), neg=css("--neg"), pan=css("--panel-2");
+    if(p==null) return pan;
+    var t=Math.max(0,Math.min(1,Math.abs(p-50)/50));
+    var c=p>=50?pos:neg;
+    return mix(pan,c,0.16+0.84*t);
+  }
+  function hx(c){ c=c.replace('#',''); if(c.length===3) c=c.split('').map(function(x){return x+x;}).join('');
+    return [parseInt(c.slice(0,2),16),parseInt(c.slice(2,4),16),parseInt(c.slice(4,6),16)]; }
+  function mix(a,b,t){ var A=hx(a),B=hx(b); return "rgb("+
+    Math.round(A[0]+(B[0]-A[0])*t)+","+Math.round(A[1]+(B[1]-A[1])*t)+","+Math.round(A[2]+(B[2]-A[2])*t)+")"; }
+
+  // ---------------------------------------------------------------- FACTS
+  (function(){
+    var f=document.getElementById("facts");
+    if(!f) return;
+    var hands = (DATA.meta.h2h_games_per_pair*28*120 + DATA.meta.ava_tables*200);
+    var items=[
+      [ (hands>=1e6? (hands/1e6).toFixed(1)+"M" : Math.round(hands/1e3)+"k"), "hands simulated"],
+      [ (DATA.strategies?DATA.strategies.length:0), "strategy archetypes"],
+      [ "8→2", "players per table"],
+      [ "0", "human intervention"]
+    ];
+    items.forEach(function(it){
+      var d=document.createElement("div"); d.className="fact";
+      d.innerHTML='<div class="n mono">'+it[0]+'</div><div class="l">'+it[1]+'</div>';
+      f.appendChild(d);
+    });
+  })();
+
+  // ---------------------------------------------------------------- HEATMAP
+  function drawHeatmap(){
+    var host=document.getElementById("heatmap"); if(!host) return; clear(host);
+    var L=DATA.labels, M=DATA.winMatrix;
+    if(!L||!M||!M.length){ host.innerHTML='<div class="empty">No matchup data.</div>'; return; }
+    var n=L.length, cell=Math.max(34,Math.min(50, Math.floor((880-90)/n))), padL=92, padT=64;
+    var W=padL+n*cell+14, H=padT+n*cell+40;
+    var s=svg(W,H);
+    // col labels
+    for(var j=0;j<n;j++){
+      s.appendChild(el("text",{x:padL+j*cell+cell/2,y:padT-22,"text-anchor":"middle",
+        "font-size":11,fill:"var(--muted)"},L[j]));
+    }
+    s.appendChild(el("text",{x:padL+n*cell/2,y:16,"text-anchor":"middle","font-size":10,
+      fill:"var(--faint)","letter-spacing":"2"},"L O S E R  ▸"));
+    var yl=el("text",{x:16,y:padT+n*cell/2,"text-anchor":"middle","font-size":10,
+      fill:"var(--faint)","letter-spacing":"2",transform:"rotate(-90 16 "+(padT+n*cell/2)+")"},"◂  W I N N E R");
+    s.appendChild(yl);
+    for(var i=0;i<n;i++){
+      s.appendChild(el("text",{x:padL-12,y:padT+i*cell+cell/2+4,"text-anchor":"end",
+        "font-size":12,fill:(L[i]==="MAN"?"var(--neg)":"var(--ink)")},L[i]));
+      for(var c=0;c<n;c++){
+        var p=M[i][c];
+        var g=el("g");
+        var r=el("rect",{x:padL+c*cell+2,y:padT+i*cell+2,width:cell-4,height:cell-4,rx:4,
+          fill:heat(p), stroke:"var(--bg)","stroke-width":1});
+        g.appendChild(r);
+        if(p==null){
+          g.appendChild(el("line",{x1:padL+c*cell+12,y1:padT+i*cell+cell-12,
+            x2:padL+c*cell+cell-12,y2:padT+i*cell+12,stroke:"var(--line)","stroke-width":1.5}));
+        } else {
+          g.appendChild(el("text",{x:padL+c*cell+cell/2,y:padT+i*cell+cell/2+4,
+            "text-anchor":"middle","font-size":11.5,
+            fill: Math.abs(p-50)>26?"#0e1512":"var(--ink)","font-weight":600},Math.round(p)));
+          (function(ii,cc,pp){
+            r.style.cursor="crosshair";
+            r.addEventListener("mousemove",function(e){
+              showTip("<b>"+DATA.strategies[ii]+"</b> vs "+DATA.strategies[cc]+"<br>wins <b>"+pp.toFixed(1)+"%</b> of 500 games",e.clientX,e.clientY);
+            });
+            r.addEventListener("mouseleave",hideTip);
+          })(i,c,p);
+        }
+        s.appendChild(g);
+      }
+    }
+    host.appendChild(s);
+    var note=document.getElementById("matrix-note");
+    if(note) note.textContent=DATA.meta.h2h_games_per_pair+" games/pair";
+    var cap=document.getElementById("matrix-cap");
+    if(cap) cap.innerHTML="Read a cell as “row beats column.” The <b>Maniac</b> row is green across the board — it beats every other style heads-up. The <b>Nit</b> row is nearly all red.";
+  }
+
+  // ---------------------------------------------------------------- REPLICATOR
+  function replicator(active){
+    // active: array of strategy indices in play
+    var M=DATA.winMatrix, GEN=64, s=0.9;
+    var idx=active.slice();
+    var x=idx.map(function(){ return 1/idx.length; });
+    var hist=[x.slice()];
+    for(var g=0;g<GEN;g++){
+      // fitness = avg advantage vs current mix
+      var fit=idx.map(function(ii,a){
+        var f=0;
+        for(var b=0;b<idx.length;b++){
+          if(a===b) continue;
+          var w=M[ii][idx[b]];
+          f += x[b]*((w==null?50:w)/100 - 0.5);
+        }
+        return f;
+      });
+      var nx=idx.map(function(_,a){ return Math.max(0, x[a]*(1+s*fit[a])); });
+      var sum=nx.reduce(function(p,q){return p+q;},0)||1;
+      nx=nx.map(function(v){ return v/sum; });
+      x=nx; hist.push(x.slice());
+    }
+    return {idx:idx, hist:hist};
+  }
+
+  var ecoState={active:[0,1,2,3,4,5,6,7]};
+  function drawEco(animate){
+    var host=document.getElementById("ecochart"); if(!host) return; clear(host);
+    var M=DATA.winMatrix;
+    if(!M||!M.length){ host.innerHTML='<div class="empty">No matchup data.</div>'; return; }
+    if(ecoState.active.length<2){ host.innerHTML='<div class="empty">Keep at least two species in play.</div>';
+      var wl=document.getElementById("eco-winner"); if(wl) wl.textContent=""; return; }
+    var res=replicator(ecoState.active), hist=res.hist, idx=res.idx, GEN=hist.length-1;
+    var W=880,H=360,padL=8,padR=118,padT=14,padB=30;
+    var iw=W-padL-padR, ih=H-padT-padB;
+    var sx=function(g){ return padL+ iw*g/GEN; };
+    var sy=function(v){ return padT+ ih*(1-v); };
+    var s=svg(W,H);
+    // baseline grid
+    [0,.25,.5,.75,1].forEach(function(v){
+      s.appendChild(el("line",{x1:padL,y1:sy(v),x2:padL+iw,y2:sy(v),stroke:"var(--line)","stroke-width":1,opacity:.5}));
+      s.appendChild(el("text",{x:padL+iw+6,y:sy(v)+4,"font-size":10,fill:"var(--faint)"},Math.round(v*100)+"%"));
+    });
+    // stacked areas (order: draw so the eventual winner sits at bottom for readability)
+    var order=idx.map(function(ii,a){return a;});
+    // build cumulative
+    function cumAt(g,upto){ var c=0; for(var a=0;a<=upto;a++) c+=hist[g][order[a]]; return c; }
+    var clipId="ecoclip"+Math.random().toString(36).slice(2);
+    var defs=el("defs"); var clip=el("clipPath",{id:clipId});
+    var crect=el("rect",{x:padL,y:0,width:iw,height:H});
+    clip.appendChild(crect); defs.appendChild(clip); s.appendChild(defs);
+    var gArea=el("g",{"clip-path":"url(#"+clipId+")"});
+    for(var a=0;a<order.length;a++){
+      var si=idx[order[a]];
+      var pts=[];
+      for(var g=0;g<=GEN;g++){ pts.push(sx(g)+","+sy(cumAt(g,a))); }
+      for(var g2=GEN;g2>=0;g2--){ pts.push(sx(g2)+","+sy(a>0?cumAt(g2,a-1):0)); }
+      var name=DATA.strategies[si];
+      gArea.appendChild(el("polygon",{points:pts.join(" "),fill:COLORS[name],
+        opacity:.9,stroke:"var(--bg)","stroke-width":.6}));
+    }
+    s.appendChild(gArea);
+    // right-edge labels for final shares > 4%
+    var finals=idx.map(function(ii,a){ return {a:a,ii:ii,v:hist[GEN][a]}; })
+      .sort(function(p,q){return q.v-p.v;});
+    var used=[];
+    finals.forEach(function(o){
+      if(o.v<0.04) return;
+      var mid=sy(cumAt(GEN,o.a)- hist[GEN][o.a]/2);
+      while(used.some(function(u){return Math.abs(u-mid)<13;})) mid-=13;
+      used.push(mid);
+      var name=DATA.strategies[o.ii];
+      s.appendChild(el("text",{x:padL+iw+6,y:mid+4,"font-size":11,fill:COLORS[name],"font-weight":600},
+        DATA.labels[o.ii]+" "+Math.round(o.v*100)+"%"));
+    });
+    // x label
+    s.appendChild(el("text",{x:padL,y:H-8,"font-size":10,fill:"var(--faint)"},"generation 0"));
+    s.appendChild(el("text",{x:padL+iw,y:H-8,"font-size":10,fill:"var(--faint)","text-anchor":"end"},GEN+""));
+    host.appendChild(s);
+
+    // winner note
+    var top=finals[0];
+    var wl=document.getElementById("eco-winner");
+    if(wl && top) wl.innerHTML="settles on <b style='color:"+COLORS[DATA.strategies[top.ii]]+"'>"+DATA.strategies[top.ii]+"</b>";
+    var cap=document.getElementById("eco-cap");
+    if(cap) cap.innerHTML="Replicator dynamics on the head-to-head payoffs. Each band is a style’s share of the population; bands are stacked to fill 100%.";
+
+    // reveal animation
+    if(animate && !reduce){
+      crect.setAttribute("width","0");
+      var t0=null, dur=1900;
+      function step(t){ if(!t0)t0=t; var k=Math.min(1,(t-t0)/dur);
+        crect.setAttribute("width", (iw*(0.5-0.5*Math.cos(Math.PI*k))).toFixed(1));
+        if(k<1) requestAnimationFrame(step); }
+      requestAnimationFrame(step);
+    }
+  }
+  function buildKnockouts(){
+    var host=document.getElementById("eco-knockouts"); if(!host) return; clear(host);
+    DATA.strategies.forEach(function(name,i){
+      var b=document.createElement("button"); b.className="chip"; b.type="button";
+      b.textContent=DATA.labels[i];
+      var inPlay=ecoState.active.indexOf(i)>=0;
+      b.setAttribute("aria-pressed", inPlay?"true":"false");
+      b.style.background = inPlay? COLORS[name] : "var(--panel-2)";
+      b.style.color = inPlay? "#12100a" : "var(--faint)";
+      b.title = inPlay? "In play — click to remove" : "Removed — click to add back";
+      b.addEventListener("click",function(){
+        var k=ecoState.active.indexOf(i);
+        if(k>=0) ecoState.active.splice(k,1); else ecoState.active.push(i);
+        buildKnockouts(); drawEco(true);
+      });
+      host.appendChild(b);
+    });
+  }
+
+  // ---------------------------------------------------------------- BAR (ring)
+  function drawBars(){
+    var host=document.getElementById("barchart"); if(!host) return; clear(host);
+    var R=DATA.ring;
+    if(!R||!R.length){ host.innerHTML='<div class="empty">No full-ring data.</div>'; return; }
+    var rows=R.slice().sort(function(a,b){return b.roi-a.roi;});
+    var W=880,rowH=40,padL=118,padR=20,padT=14,padB=28;
+    var H=padT+rows.length*rowH+padB, iw=W-padL-padR;
+    var maxAbs=Math.max.apply(null,rows.map(function(r){return Math.abs(r.roi);}));
+    var zero=padL+ iw*(maxAbs/(2*maxAbs)); // center
+    var sx=function(v){ return padL+ iw*(v+maxAbs)/(2*maxAbs); };
+    var s=svg(W,H);
+    // zero line
+    s.appendChild(el("line",{x1:sx(0),y1:padT-2,x2:sx(0),y2:H-padB+2,stroke:"var(--muted)","stroke-width":1}));
+    s.appendChild(el("text",{x:sx(0),y:H-10,"text-anchor":"middle","font-size":10,fill:"var(--faint)"},"break-even"));
+    rows.forEach(function(r,i){
+      var y=padT+i*rowH, val=r.roi, x0=sx(Math.min(0,val)), x1=sx(Math.max(0,val));
+      var isMan = r.k==="Maniac";
+      s.appendChild(el("text",{x:padL-12,y:y+rowH/2+4,"text-anchor":"end","font-size":12.5,
+        fill:isMan?"var(--neg)":"var(--ink)","font-weight":isMan?700:400},r.k));
+      var rect=el("rect",{x:x0,y:y+7,width:Math.max(1,x1-x0),height:rowH-16,rx:3,
+        fill: val>=0?"var(--pos)":"var(--neg)", opacity: isMan||i===0?1:.82});
+      s.appendChild(rect);
+      s.appendChild(el("text",{x: val>=0? x1+7 : x0-7, y:y+rowH/2+4,
+        "text-anchor": val>=0?"start":"end","font-size":11.5,fill:"var(--muted)",
+        "font-variant-numeric":"tabular-nums"}, (val>=0?"+":"")+Math.round(val*100)+"%"));
+    });
+    // maniac annotation
+    var mi=rows.findIndex(function(r){return r.k==="Maniac";});
+    if(mi>=0){
+      var y=padT+mi*rowH+rowH/2;
+      s.appendChild(el("text",{x:sx(0)+10,y:y-2,"font-size":10.5,fill:"var(--neg)"},"◂ #1 heads-up, now near-last"));
+    }
+    host.appendChild(s);
+    var cap=document.getElementById("ring-cap");
+    if(cap) cap.innerHTML="Net profit per table as a fraction of the buy-in, across "+DATA.meta.ava_tables.toLocaleString()+" tables. Positive = winning player.";
+  }
+
+  // ---------------------------------------------------------------- SWEEPS
+  function drawSweep(host,series,title){
+    clear(host);
+    if(!series||!series.length){ host.innerHTML='<div class="empty">No sweep data.</div>'; return; }
+    var W=430,H=300,padL=44,padR=14,padT=30,padB=40, iw=W-padL-padR, ih=H-padT-padB;
+    var ys=series.map(function(p){return p[1];});
+    var band=series.map(function(p){return p[2]/Math.sqrt(50);}); // SE
+    var lo=Math.min.apply(null,series.map(function(p,i){return p[1]-band[i];}));
+    var hi=Math.max.apply(null,series.map(function(p,i){return p[1]+band[i];}));
+    lo=Math.min(lo,-0.2); hi=Math.max(hi,0.2);
+    var sx=function(v){ return padL+ iw*(v-series[0][0])/(series[series.length-1][0]-series[0][0]); };
+    var sy=function(v){ return padT+ ih*(hi-v)/(hi-lo); };
+    var s=svg(W,H);
+    s.appendChild(el("text",{x:padL,y:18,"font-size":12,fill:"var(--ink)","font-weight":600},title));
+    // zero line
+    if(0>=lo&&0<=hi) s.appendChild(el("line",{x1:padL,y1:sy(0),x2:padL+iw,y2:sy(0),
+      stroke:"var(--line)","stroke-width":1,"stroke-dasharray":"3 3"}));
+    // y ticks
+    [lo,(lo+hi)/2,hi].forEach(function(v){
+      s.appendChild(el("text",{x:padL-8,y:sy(v)+3,"text-anchor":"end","font-size":9.5,fill:"var(--faint)"},
+        (v>=0?"+":"")+Math.round(v*100)+"%"));
+    });
+    // noise band
+    var top=[],bot=[];
+    series.forEach(function(p,i){ top.push(sx(p[0])+","+sy(p[1]+band[i]));
+      bot.unshift(sx(p[0])+","+sy(p[1]-band[i])); });
+    s.appendChild(el("polygon",{points:top.concat(bot).join(" "),fill:"var(--brass)",opacity:.12}));
+    // line
+    var d=series.map(function(p,i){return (i?"L":"M")+sx(p[0])+" "+sy(p[1]);}).join(" ");
+    s.appendChild(el("path",{d:d,fill:"none",stroke:"var(--brass)","stroke-width":2,
+      "stroke-linejoin":"round"}));
+    // points + peak
+    var peak=series.reduce(function(a,b){return b[1]>a[1]?b:a;});
+    series.forEach(function(p){
+      var isPk=p===peak;
+      s.appendChild(el("circle",{cx:sx(p[0]),cy:sy(p[1]),r:isPk?4.5:2.6,
+        fill:isPk?"var(--brass)":"var(--panel)",stroke:"var(--brass)","stroke-width":1.6}));
+    });
+    s.appendChild(el("text",{x:sx(peak[0]),y:sy(peak[1])-12,"text-anchor":"middle","font-size":10.5,
+      fill:"var(--brass)","font-weight":700},"peak "+peak[0]));
+    // x ticks
+    [series[0][0],0.5,series[series.length-1][0]].forEach(function(v){
+      s.appendChild(el("text",{x:sx(v),y:H-16,"text-anchor":"middle","font-size":9.5,fill:"var(--faint)"},v));
+    });
+    s.appendChild(el("text",{x:padL+iw/2,y:H-3,"text-anchor":"middle","font-size":10,fill:"var(--muted)"},
+      title.toLowerCase()+" →"));
+    host.appendChild(s);
+  }
+  function drawSweeps(){
+    var wrap=document.getElementById("sweepwrap"); if(!wrap) return; clear(wrap);
+    var defs=[["aggression","Aggression"],["play_range","Play-range"]];
+    defs.forEach(function(d){
+      var box=document.createElement("div");
+      drawSweep(box, DATA.sweeps? DATA.sweeps[d[0]] : null, d[1]);
+      wrap.appendChild(box);
+    });
+    if(innerWidth<560) wrap.style.gridTemplateColumns="1fr";
+    var cap=document.getElementById("sweep-cap");
+    if(cap) cap.innerHTML="Each point is one parameter setting; shading is the standard error. These sweeps use fewer tables per point ("+DATA.meta.sweep_note+"), so read the <b>shape</b>, not the wiggle.";
+  }
+
+  // ---------------------------------------------------------------- METHOD
+  (function(){
+    var m=document.getElementById("methodology");
+    if(m) m.innerHTML="Method — custom Python Hold'em engine; eight fixed parameter profiles; "+
+      "heads-up matrix at "+DATA.meta.h2h_games_per_pair+" games/pair, full-ring over "+
+      DATA.meta.ava_tables.toLocaleString()+" cash tables with rebuys, "+DATA.meta.difficulty+
+      " difficulty, deep stacks. Evolution is discrete replicator dynamics on the win matrix. "+
+      "Numbers are baked into this page and swap out for a fresh <code>simulation_stats.json</code> with one edit.";
+  })();
+
+  // ---------------------------------------------------------------- INIT
+  function renderAll(){ drawHeatmap(); drawEco(false); drawBars(); drawSweeps(); }
+  buildKnockouts();
+  renderAll();
+  // first-load animation for the eco chart
+  if(!reduce) setTimeout(function(){ drawEco(true); }, 350);
+
+  var pb=document.getElementById("eco-play");
+  if(pb) pb.addEventListener("click",function(){ drawEco(true); });
+
+  // redraw on resize (debounced) and on theme change (colors are token-based)
+  var rt;
+  addEventListener("resize",function(){ clearTimeout(rt); rt=setTimeout(renderAll,180); });
+  var mo=new MutationObserver(function(){ renderAll(); });
+  mo.observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+  matchMedia("(prefers-color-scheme:dark)").addEventListener("change",renderAll);
+})();
+</script>

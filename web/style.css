@@ -218,6 +218,20 @@ body.hide-styles .seat .style { display: none; }
 .badge.allin { background: var(--danger); color: #fff; }
 .bet { margin-top: 0.2rem; color: var(--accent); min-height: 1em; font-variant-numeric: tabular-nums; }
 
+/* Showdown reveal: face-up hole cards + best-hand label under a seat. */
+.seat-cards:empty { display: none; }
+.seat-cards { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; margin-top: 0.25rem; }
+.seat-cards .mc-row { display: flex; gap: 0.2rem; }
+.mini-card {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 1.4rem; height: 1.9rem; padding: 0 0.2rem;
+  background: var(--card-bg); color: var(--card-fg); border: 1px solid var(--card-border);
+  border-radius: 4px; font-weight: 700; font-size: 0.82rem;
+  box-shadow: 0 1px 2px var(--shadow);
+}
+.mini-card.red { color: var(--card-red); }
+.mc-name { font-size: 0.68rem; color: var(--text-dim); text-align: center; }
+
 #center {
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%); text-align: center;
