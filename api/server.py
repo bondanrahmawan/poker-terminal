@@ -279,7 +279,18 @@ def create_app() -> FastAPI:
     # Mounted last so the API routes above take precedence; everything else
     # falls through to web/ (html=True serves index.html at "/").
     from fastapi.staticfiles import StaticFiles
-    app.mount("/", StaticFiles(directory="web", html=True), name="web")
+
+    class NoCacheStaticFiles(StaticFiles):
+        """Serve the web client with Cache-Control: no-cache so browsers always
+        revalidate against the ETag/Last-Modified that StaticFiles already sends.
+        Unchanged files return a cheap 304; edits take effect on the next reload
+        without manual ?v= bumps."""
+        async def get_response(self, path, scope):
+            response = await super().get_response(path, scope)
+            response.headers["Cache-Control"] = "no-cache"
+            return response
+
+    app.mount("/", NoCacheStaticFiles(directory="web", html=True), name="web")
 
     return app
 

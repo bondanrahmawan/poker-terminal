@@ -261,7 +261,7 @@ async function pump() {
     // The full fresh view is held back until the queue drains, so wipe the
     // previous hand's board here — otherwise its community cards linger, and the
     // last hand's folded/dimmed seats stay dimmed, while the new hand animates.
-    if (ev.type === "hand_started") { clearCommunity(); resetSeatStates(); }
+    if (ev.type === "hand_started") { clearCommunity(); clearHole(); resetSeatStates(); }
     const line = appendHistory(ev);           // every event (tracks winnings, returns caption line)
     if (line) showCaption(ev, line);          // banner + seat highlight
     // No caption → nothing to read → no dwell (kills hand-start dead air).
@@ -345,8 +345,15 @@ function setActing(pid) {
 // seats don't stay dimmed through the opening animation before the fresh view
 // (which re-renders everyone active) lands. Busted seats stay dimmed.
 function resetSeatStates() {
-  el("seats").querySelectorAll(".seat").forEach((s) =>
-    s.classList.remove("folded", "acting"));
+  el("seats").querySelectorAll(".seat").forEach((s) => {
+    s.classList.remove("folded", "acting");
+    // Also wipe the previous hand's "bet N" chip text — otherwise a showdown/
+    // all-in bet that never collapsed to zero lingers through the animation.
+    const bet = s.querySelector(".bet");
+    if (bet) bet.textContent = "";
+    // Drop stale position/ALL-IN badges too; the fresh view re-adds them.
+    s.querySelectorAll(".name .badge").forEach((b) => b.remove());
+  });
 }
 
 // ── History panel ────────────────────────────────────────────────────────────
@@ -1288,6 +1295,15 @@ function renderCommunity(v) {
 function clearCommunity() {
   el("community").innerHTML =
     `<span class="card empty"></span>`.repeat(5);
+}
+
+// Reset the player's hole cards to face-down backs and clear the ranking label,
+// so the previous hand's cards + hand name don't linger through the opening
+// animation before the held-back view lands (mirrors clearCommunity).
+function clearHole() {
+  el("hole").innerHTML =
+    `<span class="card back"></span><span class="card back"></span>`;
+  el("hand-name").textContent = "";
 }
 
 function renderHole(v) {
