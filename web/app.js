@@ -16,6 +16,12 @@ const S = {
 let wsRetryDelay = 1000; // reconnect backoff: 1s, 2s, 4s … cap 10s
 let handWinnings = {};   // pid → {pid, name, amount}; reset each hand (V2 summary)
 let statsThenQuit = false; // stats modal opened via Quit → closing it leaves the table
+let autoDealTimer = null;  // countdown interval when Auto-deal is on
+
+const autoDealOn = () => localStorage.getItem("poker.autodeal") === "1";
+function clearAutoDeal() {
+  if (autoDealTimer) { clearInterval(autoDealTimer); autoDealTimer = null; }
+}
 
 const esc = (s) => String(s).replace(/[&<>"']/g,
   (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
@@ -575,8 +581,30 @@ function showMenu() {
 }
 
 function showSettings() {
+  restoreSettings();
   S.phase = "settings";
   render();
+}
+
+// Repopulate the new-game form from the last-used settings (localStorage).
+function restoreSettings() {
+  let s;
+  try { s = JSON.parse(localStorage.getItem("poker.settings") || "null"); } catch (e) { s = null; }
+  if (!s) return;
+  const f = el("settings-form");
+  const setVal = (name, val) => { if (val != null && f[name] != null) f[name].value = val; };
+  setVal("player_name", s.player_name);
+  setVal("num_bots", s.num_bots);
+  setVal("starting_chips", s.starting_chips);
+  setVal("big_blind", s.big_blind);
+  setVal("hands_per_level", s.hands_per_level);
+  setVal("game_mode", s.game_mode);
+  // Guard a stale "expert" (level removed) back to a valid choice.
+  setVal("difficulty", ["easy", "normal", "hard"].includes(s.difficulty) ? s.difficulty : "normal");
+  const setChk = (name, val) => { if (f[name] != null) f[name].checked = !!val; };
+  setChk("enable_ante", s.enable_ante);
+  setChk("short_deck", s.short_deck);
+  setChk("shuffle_bots", s.shuffle_bots);
 }
 
 // Viewer state: which tab and difficulty filter are active.
@@ -1140,6 +1168,19 @@ function initStylesToggle() {
   });
 }
 
+// Auto-deal: when on, the next hand starts itself after a short countdown.
+// Persisted, off by default. Toggling re-renders the action bar so the
+// countdown starts/stops immediately if we're currently between hands.
+function initAutoDeal() {
+  const box = el("autodeal-toggle").querySelector("input");
+  box.checked = autoDealOn();
+  box.addEventListener("change", () => {
+    localStorage.setItem("poker.autodeal", box.checked ? "1" : "0");
+    if (!box.checked) clearAutoDeal();
+    if (S.view) renderActionBar(S.view);
+  });
+}
+
 // Light/dark theme: persisted, defaults to dark. Applied on <html> so the CSS
 // variable overrides cascade to everything.
 function initTheme() {
@@ -1173,6 +1214,7 @@ el("settings-form").addEventListener("submit", async (e) => {
     short_deck: f.short_deck.checked,
     shuffle_bots: f.shuffle_bots.checked,
   };
+  localStorage.setItem("poker.settings", JSON.stringify(settings));
   const res = await postJSON("/games", settings);
   if (!res.ok) {
     // #ws-status lives in the (hidden) table screen, so alert here instead.
@@ -1317,6 +1359,7 @@ function renderHole(v) {
 function renderActionBar(v) {
   const bar = el("action-bar");
   bar.innerHTML = "";
+  clearAutoDeal();  // a fresh render supersedes any pending auto-deal countdown
   // While captions are still playing the view is stale; keep the bar empty so it
   // can't unlock before the player has seen why it's their turn.
   if (S.animating) return;
@@ -1336,7 +1379,7 @@ function renderActionBar(v) {
   if (v.state === "END" || v.state === "WAITING") {
     const btn = document.createElement("button");
     btn.textContent = "Next hand";
-    btn.onclick = () => nextHand();
+    btn.onclick = () => { clearAutoDeal(); nextHand(); };
     bar.appendChild(btn);
 
     const add = document.createElement("button");
@@ -1350,6 +1393,20 @@ function renderActionBar(v) {
     quit.className = "chip-btn";
     quit.onclick = quitTable;
     bar.appendChild(quit);
+
+    // Auto-deal: after a short countdown, start the next hand automatically —
+    // but never when the human busted (they must choose to rebuy) so we don't
+    // spend chips on their behalf.
+    const me = (v.players || []).find((p) => p.is_you);
+    if (autoDealOn() && me && me.chips > 0) {
+      let remain = 2;
+      btn.textContent = `Next hand (${remain})`;
+      autoDealTimer = setInterval(() => {
+        remain -= 1;
+        if (remain <= 0) { clearAutoDeal(); nextHand(); return; }
+        btn.textContent = `Next hand (${remain})`;
+      }, 1000);
+    }
   }
 }
 
@@ -1357,7 +1414,8 @@ function renderActionBar(v) {
 // and return to the menu once the modal is dismissed (finalizeQuit, via
 // closeStats). Stats are fetched while the game still exists — before DELETE.
 async function quitTable() {
-  if (!confirm("Leave this table? Your session stats will be saved.")) return;
+  if (!(await confirmDialog("Leave this table? Your session stats will be saved.",
+                            { okText: "Leave" }))) return;
   statsThenQuit = true;
   await showStats();
   // If stats couldn't be shown (e.g. request failed), don't strand the user.
@@ -1395,8 +1453,33 @@ function renderActions(bar, req) {
   bar.appendChild(info);
 }
 
-function confirmAllIn() {
-  if (confirm("Go all-in?")) sendAction("all-in");
+// Promise-based in-app confirm dialog (replaces native confirm()). Resolves
+// true on OK, false on Cancel / Esc / backdrop click. Esc & Enter are routed
+// from the global keydown handler via the stored _done resolver.
+function confirmDialog(message, opts = {}) {
+  return new Promise((resolve) => {
+    const modal = el("confirm-modal");
+    el("confirm-msg").textContent = message;
+    const ok = el("confirm-ok");
+    const cancel = el("confirm-cancel");
+    ok.textContent = opts.okText || "OK";
+    cancel.textContent = opts.cancelText || "Cancel";
+    modal.classList.remove("hidden");
+    ok.focus();
+    const done = (val) => {
+      modal.classList.add("hidden");
+      ok.onclick = cancel.onclick = modal.onclick = modal._done = null;
+      resolve(val);
+    };
+    ok.onclick = () => done(true);
+    cancel.onclick = () => done(false);
+    modal.onclick = (e) => { if (e.target === modal) done(false); };
+    modal._done = done;
+  });
+}
+
+async function confirmAllIn() {
+  if (await confirmDialog("Go all-in?", { okText: "All-in" })) sendAction("all-in");
 }
 
 function toggleRaisePanel(bar, req) {
@@ -1410,16 +1493,21 @@ function toggleRaisePanel(bar, req) {
   // Shortcut deltas mirror players/terminal.py (chips pushed in now). A pot-
   // sized raise = call the outstanding bet, then raise by the resulting pot.
   const clamp = (x) => Math.min(max, Math.max(min, x));
+  const third = clamp(minCall + Math.floor((pot + minCall) / 3));
   const half = clamp(minCall + Math.floor((pot + minCall) / 2));
+  const threeq = clamp(minCall + Math.floor((pot + minCall) * 3 / 4));
   const full = clamp(minCall + (pot + minCall));
 
   const panel = document.createElement("div");
   panel.className = "raise-panel";
+  // Presets map to number keys 1–6 (see the keydown handler).
   panel.innerHTML =
     `<input type="range" min="${min}" max="${max}" value="${min}" step="1" />` +
     `<input type="number" min="${min}" max="${max}" value="${min}" />` +
     `<button class="chip-btn" data-v="${min}">Min ${min}</button>` +
+    `<button class="chip-btn" data-v="${third}">⅓ Pot ${third}</button>` +
     `<button class="chip-btn" data-v="${half}">½ Pot ${half}</button>` +
+    `<button class="chip-btn" data-v="${threeq}">¾ Pot ${threeq}</button>` +
     `<button class="chip-btn" data-v="${full}">Pot ${full}</button>` +
     `<button class="chip-btn" data-v="${max}">Max ${max}</button>` +
     `<button class="confirm">Confirm</button>` +
@@ -1433,7 +1521,10 @@ function toggleRaisePanel(bar, req) {
     const amt = clamp(Math.round(Number(val) || min));
     range.value = amt;
     number.value = amt;
-    hint.textContent = `Putting in ${amt} now (min ${min}, max ${max}).`;
+    const potPct = pot > 0 ? Math.round((amt / pot) * 100) : 0;
+    const stackPct = max > 0 ? Math.round((amt / max) * 100) : 0;
+    hint.textContent =
+      `Putting in ${amt} · ${potPct}% of pot · ${stackPct}% of stack → pot becomes ${pot + amt}`;
   };
   range.oninput = () => sync(range.value);
   number.oninput = () => sync(number.value);
@@ -1457,8 +1548,8 @@ el("felt").addEventListener("click", () => { if (S.animating) S.skip = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden && S.animating) S.skip = true; });
 
 // Quit the table at any point → back to settings (clears the session).
-el("quit-btn").addEventListener("click", () => {
-  if (confirm("Leave this table and start a new game?")) newGame();
+el("quit-btn").addEventListener("click", async () => {
+  if (await confirmDialog("Leave this table and start a new game?", { okText: "Leave" })) newGame();
 });
 
 // Landing-menu wiring: Play → settings, Tournament stats → viewer; disabled
@@ -1543,6 +1634,12 @@ el("help-tabs").addEventListener("click", (e) => {
 // gating (animating, disabled, legality) stays in renderActionBar.
 document.addEventListener("keydown", (e) => {
   if (e.target.matches("input, textarea, select")) return;
+  if (!el("confirm-modal").classList.contains("hidden")) {
+    const done = el("confirm-modal")._done;
+    if (e.key === "Escape") { e.preventDefault(); done && done(false); }
+    else if (e.key === "Enter") { e.preventDefault(); done && done(true); }
+    return;
+  }
   if (!el("help-modal").classList.contains("hidden")) {
     if (e.key === "Escape") closeHelp();
     return;
@@ -1561,6 +1658,13 @@ document.addEventListener("keydown", (e) => {
     panel.querySelector(".confirm").click();
     return;
   }
+  // Number keys pick a bet-sizing preset (Min ⅓ ½ ¾ Pot Max) while sizing.
+  if (panel && /^[1-9]$/.test(e.key)) {
+    const btns = panel.querySelectorAll(".chip-btn");
+    const idx = Number(e.key) - 1;
+    if (btns[idx]) { e.preventDefault(); btns[idx].click(); }
+    return;
+  }
 
   const byLabel = (pred) =>
     [...bar.querySelectorAll("button")].find((b) => !b.disabled && pred(b.textContent));
@@ -1570,12 +1674,13 @@ document.addEventListener("keydown", (e) => {
   else if (k === "c") btn = byLabel((t) => t === "Check" || t.startsWith("Call"));
   else if (k === "r") btn = byLabel((t) => t === "Raise");
   else if (k === "a") btn = byLabel((t) => t.startsWith("All-in"));
-  else if (k === "n") btn = byLabel((t) => t === "Next hand");
+  else if (k === "n") btn = byLabel((t) => t.startsWith("Next hand"));
   if (btn) { e.preventDefault(); btn.click(); }
 });
 
 initHistoryToggle();
 initSimpleMode();
 initStylesToggle();
+initAutoDeal();
 initTheme();
 restoreSession();

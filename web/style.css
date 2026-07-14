@@ -302,6 +302,21 @@ body.hide-styles .seat .style { display: none; }
 #stats-body .ins-line { font-size: 0.85rem; padding: 0.1rem 0; }
 #stats-btn, #quit-btn, #help-btn { flex-shrink: 0; font-size: 0.85rem; padding: 0.3rem 0.7rem; }
 
+/* ── Confirm dialog ───────────────────────────────────────────────────────── */
+#confirm-modal {
+  position: fixed; inset: 0; z-index: 110;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center;
+}
+#confirm-modal.hidden { display: none; }
+#confirm-box {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  max-width: 400px; width: calc(100% - 2rem); padding: 1.1rem 1.2rem;
+  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.6);
+}
+#confirm-msg { margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.4; }
+#confirm-actions { display: flex; justify-content: flex-end; gap: 0.6rem; }
+
 /* ── Glossary / Help modal ────────────────────────────────────────────────── */
 #help-modal {
   position: fixed; inset: 0; z-index: 100;
