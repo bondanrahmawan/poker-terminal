@@ -23,6 +23,52 @@ function clearAutoDeal() {
   if (autoDealTimer) { clearInterval(autoDealTimer); autoDealTimer = null; }
 }
 
+// Between-hands summary + sound-cue state (all reset per game via resetSessionMeta).
+let prevHandNet = 0;    // human net (chips - invested) as of the previous hand-end
+let summaryHand = null; // hand_number the current per-hand delta was computed for
+let lastDelta = 0;      // that per-hand delta, reused across re-renders of one hand-end
+let lastWinHand = null; // hand_number we last played the win cue for (once per hand)
+let wasToAct = false;   // edge-detect entering "your turn" for the turn cue
+let audioCtx = null;
+
+function resetSessionMeta() {
+  prevHandNet = 0; summaryHand = null; lastDelta = 0; lastWinHand = null; wasToAct = false;
+}
+
+// ── Sound cues (WebAudio; no asset files) ────────────────────────────────────
+const soundOn = () => localStorage.getItem("poker.sound") === "1";
+
+function ensureAudio() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    audioCtx = new AC();
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
+// A short enveloped sine beep, optionally delayed (for arpeggios).
+function beep(freq, dur, delay = 0, gain = 0.12) {
+  const c = ensureAudio();
+  if (!c) return;
+  const t0 = c.currentTime + delay;
+  const osc = c.createOscillator();
+  const g = c.createGain();
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  osc.connect(g);
+  g.connect(c.destination);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(gain, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.02);
+}
+
+function playTurnCue() { if (soundOn()) { beep(660, 0.14); beep(880, 0.14, 0.13); } }
+function playWinCue() { if (soundOn()) [523, 659, 784].forEach((f, i) => beep(f, 0.18, i * 0.1)); }
+
 const esc = (s) => String(s).replace(/[&<>"']/g,
   (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
@@ -247,6 +293,7 @@ function newGame() {
   });
   wsRetryDelay = 1000;
   handWinnings = {};
+  resetSessionMeta();
   el("history").innerHTML = "";
   el("caption").textContent = "";
   document.title = "Poker Terminal";
@@ -1181,6 +1228,17 @@ function initAutoDeal() {
   });
 }
 
+// Sound cues: persisted, off by default. Toggling on unlocks the AudioContext
+// (this click is the required user gesture) and plays a short confirm blip.
+function initSound() {
+  const box = el("sound-toggle").querySelector("input");
+  box.checked = soundOn();
+  box.addEventListener("change", () => {
+    localStorage.setItem("poker.sound", box.checked ? "1" : "0");
+    if (box.checked) { ensureAudio(); beep(880, 0.12); }
+  });
+}
+
 // Light/dark theme: persisted, defaults to dark. Applied on <html> so the CSS
 // variable overrides cascade to everything.
 function initTheme() {
@@ -1227,6 +1285,7 @@ el("settings-form").addEventListener("submit", async (e) => {
   S.gameId = data.game_id;
   S.view = data.view;
   localStorage.setItem("poker.gameId", S.gameId);
+  resetSessionMeta();
   S.phase = "table";
   render();
   await backfillHistory(); // empty for a fresh game; sets lastSeq before WS events arrive
@@ -1356,6 +1415,55 @@ function renderHole(v) {
     : `<span class="card back"></span><span class="card back"></span>`;
 }
 
+// Between-hands summary card (#6). Headline comes from the already-tracked
+// hand winnings; the session line is filled asynchronously from /stats so the
+// per-hand delta and cumulative net use the authoritative numbers.
+function renderHandSummary(v, bar) {
+  const youId = (v.you && v.you.player_id) || "h1";
+  const won = handWinnings[youId];
+  const handName = v.you && v.you.hand_name;
+
+  if (won && lastWinHand !== v.hand_number) { playWinCue(); lastWinHand = v.hand_number; }
+
+  const card = document.createElement("div");
+  card.className = "hand-summary" + (won ? " win" : "");
+  const headline = won
+    ? `You won ${won.amount}${handName ? ` with ${handName}` : ""}`
+    : "You didn't win this hand";
+  card.innerHTML =
+    `<div class="hs-headline"></div>` +
+    `<div class="hs-line dim">Session — · hand ${v.hand_number}</div>`;
+  card.querySelector(".hs-headline").textContent = headline;
+  bar.appendChild(card);
+  fillSummaryTotals(card, v);
+}
+
+async function fillSummaryTotals(card, v) {
+  try {
+    const res = await fetch(`/games/${S.gameId}/stats`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const youId = (v.you && v.you.player_id) || "h1";
+    const s = data.stats && data.stats[youId];
+    const me = (v.players || []).find((p) => p.is_you);
+    if (!s || !me) return;
+    const net = me.chips - (s.total_invested || 0);
+    // Compute the per-hand delta once per hand; reuse it across re-renders.
+    if (summaryHand !== v.hand_number) {
+      lastDelta = net - prevHandNet;
+      prevHandNet = net;
+      summaryHand = v.hand_number;
+    }
+    const fmt = (n) => (n >= 0 ? `+${n}` : `${n}`);
+    const line = card.querySelector(".hs-line");
+    if (line) {
+      line.textContent =
+        `This hand ${fmt(lastDelta)} · Session ${fmt(net)} · ` +
+        `${data.hand_count} hand${data.hand_count === 1 ? "" : "s"}`;
+    }
+  } catch (e) { /* best effort — the headline still shows */ }
+}
+
 function renderActionBar(v) {
   const bar = el("action-bar");
   bar.innerHTML = "";
@@ -1369,14 +1477,20 @@ function renderActionBar(v) {
   const toAct = !!(you && you.to_act && you.action_request);
   bar.classList.toggle("your-turn", toAct);
   document.title = toAct ? "● Your turn — Poker Terminal" : "Poker Terminal";
+  // Audio cue on entering your turn, but only when the tab is backgrounded —
+  // a chime every turn while you're watching would just be noise.
+  if (toAct && !wasToAct && document.hidden) playTurnCue();
+  wasToAct = toAct;
 
   if (toAct) {
     renderActions(bar, you.action_request);
     return;
   }
-  // Not our turn. If the hand is over, offer to start the next one so a full
-  // hand is playable end-to-end (the rich between-hands flow comes later).
+  // Not our turn. If the hand is over, show a summary of what just happened and
+  // offer to start the next one.
   if (v.state === "END" || v.state === "WAITING") {
+    renderHandSummary(v, bar);
+
     const btn = document.createElement("button");
     btn.textContent = "Next hand";
     btn.onclick = () => { clearAutoDeal(); nextHand(); };
@@ -1682,5 +1796,6 @@ initHistoryToggle();
 initSimpleMode();
 initStylesToggle();
 initAutoDeal();
+initSound();
 initTheme();
 restoreSession();

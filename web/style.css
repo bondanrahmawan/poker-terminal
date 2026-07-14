@@ -302,6 +302,17 @@ body.hide-styles .seat .style { display: none; }
 #stats-body .ins-line { font-size: 0.85rem; padding: 0.1rem 0; }
 #stats-btn, #quit-btn, #help-btn { flex-shrink: 0; font-size: 0.85rem; padding: 0.3rem 0.7rem; }
 
+/* ── Between-hands summary card ───────────────────────────────────────────── */
+.hand-summary {
+  width: 100%; box-sizing: border-box; text-align: center;
+  padding: 0.45rem 0.75rem; margin-bottom: 0.5rem;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface-3);
+}
+.hand-summary.win { border-color: var(--pos); }
+.hand-summary .hs-headline { font-weight: 600; font-size: 0.95rem; }
+.hand-summary.win .hs-headline { color: var(--pos); }
+.hand-summary .hs-line { font-size: 0.78rem; margin-top: 0.15rem; }
+
 /* ── Confirm dialog ───────────────────────────────────────────────────────── */
 #confirm-modal {
   position: fixed; inset: 0; z-index: 110;
