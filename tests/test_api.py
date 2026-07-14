@@ -266,15 +266,11 @@ def test_invalid_game_mode_rejected():
     assert r.status_code == 422
 
 
-def test_expert_difficulty_creates_session_with_expert_bots():
+def test_expert_difficulty_is_rejected():
+    # Expert was retired as a user-selectable difficulty (it was statistically
+    # co-equal with Hard); only easy/normal/hard are accepted now.
     r = client.post("/games", json=dict(SETTINGS, difficulty="expert"))
-    assert r.status_code == 201
-    game_id = r.json()["game_id"]
-    session = client.app.state.manager.get(game_id)
-    bots = [p for p in session.game.players if p.player_id != "h1"]
-    assert bots
-    for bot in bots:
-        assert bot.strategy.difficulty == pytest.approx(0.9)
+    assert r.status_code == 422
 
 
 def test_cash_mode_no_blind_escalation():
@@ -413,15 +409,12 @@ def test_simulation_rejects_bad_difficulty():
     assert r.status_code == 422
 
 
-def test_simulation_accepts_expert_label(monkeypatch):
-    monkeypatch.setattr("api.simulations.benchmark.run_all_vs_all",
-                        lambda *a, progress=None, should_stop=None, **k: dict(_STOPPED_RESULT))
+def test_simulation_rejects_expert_label():
+    # Expert (0.9) is no longer a selectable benchmark difficulty.
     r = client.post("/simulations",
                     json={"type": "all_vs_all", "num_tables": 2, "hands_per_table": 20,
                           "difficulty": "expert"})
-    assert r.status_code == 201
-    job = _wait_until_idle()
-    assert job["params"]["difficulty"] == 0.9
+    assert r.status_code == 422
 
 
 def test_simulation_param_sweep_requires_param_name():

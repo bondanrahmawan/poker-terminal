@@ -366,9 +366,9 @@ def _print_benchmark_results(ranked: list, num_tables: int, hands_per_table: int
 def _prompt_difficulty() -> float:
     """Prompt user for difficulty level. Returns float."""
     print("\nDifficulty for all bots:")
-    print("  1. Easy (0.4)   2. Normal (0.6)   3. Hard (0.75)   4. Expert (0.9)")
+    print("  1. Easy (0.4)   2. Normal (0.6)   3. Hard (0.75)")
     diff_input = input("Choose (default 2): ").strip()
-    return {'1': 0.4, '3': 0.75, '4': 0.9}.get(diff_input, 0.6)
+    return {'1': 0.4, '3': 0.75}.get(diff_input, 0.6)
 
 
 def _run_strategy_benchmark() -> None:

@@ -14,10 +14,10 @@ from core.state import GameState
 from core.stats_persistent import PersistentStatsManager
 from players.agent import AgentPlayer
 from players.roster import create_bots
-from strategies.difficulty import EASY, NORMAL, HARD, EXPERT
+from strategies.difficulty import EASY, NORMAL, HARD
 
 HUMAN_ID = "h1"
-_DIFFICULTY = {"easy": EASY, "normal": NORMAL, "hard": HARD, "expert": EXPERT}
+_DIFFICULTY = {"easy": EASY, "normal": NORMAL, "hard": HARD}
 
 
 class BustedError(Exception):

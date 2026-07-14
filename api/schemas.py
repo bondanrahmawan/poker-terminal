@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class CreateGameRequest(BaseModel):
     player_name: str = "Player"
     num_bots: int = Field(default=3, ge=1, le=12)
-    difficulty: Literal["easy", "normal", "hard", "expert"] = "normal"
+    difficulty: Literal["easy", "normal", "hard"] = "normal"
     game_mode: Literal["tournament", "cash"] = "tournament"
     starting_chips: int = Field(default=1000, ge=1)
     big_blind: int = Field(default=20, ge=2)
@@ -31,12 +31,12 @@ class ActionRequestBody(BaseModel):
     amount: int = 0                      # DELTA chips (only meaningful for raise)
 
 
-_DIFFICULTY_LABELS = {"easy": 0.4, "normal": 0.6, "hard": 0.75, "expert": 0.9}
-_DIFFICULTY_VALUES = {0.4, 0.6, 0.75, 0.9}
+_DIFFICULTY_LABELS = {"easy": 0.4, "normal": 0.6, "hard": 0.75}
+_DIFFICULTY_VALUES = {0.4, 0.6, 0.75}
 
 
 class CreateSimulationRequest(BaseModel):
-    """A benchmark job request. difficulty accepts a label or one of the four
+    """A benchmark job request. difficulty accepts a label or one of the three
     floats; the browser caps (tables ≤ 200, hands ≤ 1000) are clamped in the
     endpoint, not here."""
     type: Literal["all_vs_all", "h2h", "param_sweep"]
@@ -59,9 +59,9 @@ class CreateSimulationRequest(BaseModel):
             try:
                 v = float(key)
             except ValueError:
-                raise ValueError("difficulty must be easy/normal/hard/expert or 0.4/0.6/0.75/0.9")
+                raise ValueError("difficulty must be easy/normal/hard or 0.4/0.6/0.75")
         if float(v) not in _DIFFICULTY_VALUES:
-            raise ValueError("difficulty must be one of 0.4/0.6/0.75/0.9")
+            raise ValueError("difficulty must be one of 0.4/0.6/0.75")
         return float(v)
 
     @model_validator(mode="after")
