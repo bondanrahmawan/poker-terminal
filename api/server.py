@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, Response
 
 from core.errors import IllegalActionError
 from core.stats_persistent import PersistentStatsManager
-from core.simulation_stats import SimulationStatsManager
+from core.simulation_stats import SimulationStatsManager, SIM_STATS_FILE
 from api.schemas import (
     CreateGameRequest, StartHandRequest, ActionRequestBody, CreateSimulationRequest,
 )
@@ -290,6 +290,19 @@ def create_app() -> FastAPI:
             response.headers["Cache-Control"] = "no-cache"
             return response
 
+    # The game-theory showcase page (showcase/) reads the live simulation
+    # results file; serve it and the JSON above the "/" catch-all so its
+    # ../simulation_stats.json fetch resolves to the repo-root file.
+    from fastapi.responses import FileResponse
+
+    @app.get("/simulation_stats.json")
+    def simulation_stats_json():
+        if not SIM_STATS_FILE.exists():
+            raise HTTPException(status_code=404, detail="no simulation stats yet")
+        return FileResponse(SIM_STATS_FILE, media_type="application/json",
+                            headers={"Cache-Control": "no-cache"})
+
+    app.mount("/showcase", NoCacheStaticFiles(directory="showcase", html=True), name="showcase")
     app.mount("/", NoCacheStaticFiles(directory="web", html=True), name="web")
 
     return app

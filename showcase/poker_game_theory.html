@@ -1,3 +1,5 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Poker, as Game Theory — Why the Best Strategy Depends on the Table</title>
 <style>
   :root {
@@ -245,36 +247,115 @@
   "use strict";
 
   // ---------------------------------------------------------------- DATA
-  // Baked-in results from the simulation engine (Normal difficulty, deep
-  // stacks). Everything below degrades gracefully if a field is empty:
-  // swap in fresh numbers from simulation_stats.json anytime.
-  var DATA = {
-    meta:{ difficulty:"Normal", stack:"deep", h2h_games_per_pair:500,
-           ava_tables:1650, sweep_note:"~50 tables/point" },
-    strategies:["TightAggressive","TightPassive","LooseAggressive","LoosePassive","Balanced","Nit","Maniac","Trapper"],
-    labels:["TAG","TP","LAG","LP","BAL","NIT","MAN","TRAP"],
-    // row beats column, %  (null on diagonal)
-    winMatrix:[
-      [null,38.4,25.0,39.4,31.0,80.2,21.8,36.8],
-      [61.6,null,30.8,20.4,43.8,85.2,34.2,44.2],
-      [75.0,69.2,null,58.2,71.0,94.8,34.6,55.8],
-      [60.6,79.6,41.8,null,58.8,84.8,31.2,80.2],
-      [69.0,56.2,29.0,41.2,null,92.2,21.4,51.0],
-      [19.8,14.8,5.2,15.2,7.8,null,7.4,14.4],
-      [78.2,65.8,65.4,68.8,78.6,92.6,null,65.0],
-      [63.2,55.8,44.2,19.8,49.0,85.6,35.0,null]
-    ],
-    // full-ring: profit per table as ROI on starting stack
-    ring:[
-      {k:"Trapper",roi:5.192},{k:"TightPassive",roi:4.191},{k:"TightAggressive",roi:0.731},
-      {k:"Balanced",roi:-0.105},{k:"LooseAggressive",roi:-0.392},{k:"Nit",roi:-0.851},
-      {k:"Maniac",roi:-2.255},{k:"LoosePassive",roi:-6.510}
-    ],
-    sweeps:{
-      aggression:[[0.1,-1.4262,2.00],[0.2,-0.6028,2.44],[0.3,0.1059,2.92],[0.4,0.3823,3.96],[0.5,0.2766,4.20],[0.6,1.2928,4.14],[0.7,0.9369,4.59],[0.8,0.8429,5.34],[0.9,1.1643,4.46],[1.0,1.7034,3.96]],
-      play_range:[[0.1,-0.9186,2.40],[0.2,0.6250,3.25],[0.3,0.5570,3.65],[0.4,-0.2354,3.13],[0.5,-0.5401,3.26],[0.6,1.7392,4.14],[0.7,-1.7855,3.20],[0.8,-0.0257,3.96],[0.9,-0.4960,4.78],[1.0,0.9064,4.87]]
+  // No numbers are hardcoded. This page fetches the app's own
+  // simulation_stats.json (as written by core/simulation_stats.py) and
+  // renders whatever is actually in it. If the file is missing, empty,
+  // or a section has no sessions yet, that section shows an empty state
+  // instead of fabricated numbers.
+  var EMPTY_DATA = { meta:{}, strategies:[], labels:[], winMatrix:[], ring:[], sweeps:{} };
+  var DATA = EMPTY_DATA;
+
+  function abbrev(name){
+    var known = {TightAggressive:"TAG",TightPassive:"TP",LooseAggressive:"LAG",
+      LoosePassive:"LP",Balanced:"BAL",Nit:"NIT",Maniac:"MAN",Trapper:"TRAP"};
+    return known[name] || name.slice(0,4).toUpperCase();
+  }
+
+  function pickBucket(byBucket, rankFn){
+    var best=null, bestKey=null, bestScore=-Infinity;
+    Object.keys(byBucket||{}).forEach(function(k){
+      var v=byBucket[k], score=rankFn(v);
+      if(score>bestScore){ bestScore=score; best=v; bestKey=k; }
+    });
+    return best ? {key:bestKey, val:best} : null;
+  }
+
+  // Transform the raw persisted shape (raw.alltime.h2h / raw.alltime.all_vs_all
+  // / raw.sessions) into what the chart functions below expect. Any section
+  // absent from the file is simply left empty.
+  function transform(raw){
+    var out = { meta:{}, strategies:[], labels:[], winMatrix:[], ring:[], sweeps:{} };
+    if(!raw) return out;
+
+    var sessions = raw.sessions || [];
+    out.meta.sessionsLogged = sessions.length;
+
+    // --- H2H matrix: use the bucket with the most total pairwise games ---
+    var h2hBuckets = (raw.alltime && raw.alltime.h2h) || {};
+    var h2hPick = pickBucket(h2hBuckets, function(v){
+      var total=0;
+      Object.keys(v).forEach(function(s){
+        if(v[s] && v[s].vs) Object.keys(v[s].vs).forEach(function(o){ total+=v[s].vs[o].total||0; });
+      });
+      return total;
+    });
+    if(h2hPick){
+      var h = h2hPick.val;
+      var strat = Object.keys(h).filter(function(s){ return h[s] && h[s].vs; });
+      if(strat.length){
+        out.strategies = strat;
+        out.labels = strat.map(abbrev);
+        out.winMatrix = strat.map(function(si){
+          return strat.map(function(sj){
+            if(si===sj) return null;
+            var vs = h[si].vs[sj];
+            if(!vs || !vs.total) return null;
+            return vs.wins / vs.total * 100;
+          });
+        });
+        var pairTotals = [];
+        strat.forEach(function(si){ Object.keys(h[si].vs||{}).forEach(function(sj){
+          pairTotals.push(h[si].vs[sj].total); }); });
+        out.meta.h2hGamesPerPair = pairTotals.length ? Math.round(pairTotals.reduce(function(a,b){return a+b;},0)/pairTotals.length) : null;
+        var [bd, bs, ba, bdepth] = h2hPick.key.split('|');
+        out.meta.h2hConfig = bd + ' · ' + bdepth + ' stack';
+      }
     }
-  };
+
+    // --- Full-ring ranking: bucket with the most tables ---
+    var avaBuckets = (raw.alltime && raw.alltime.all_vs_all) || {};
+    var avaPick = pickBucket(avaBuckets, function(v){ return v.total_tables||0; });
+    if(avaPick){
+      var a = avaPick.val, tt = a.total_tables || 0;
+      var names = Object.keys(a).filter(function(k){ return a[k] && typeof a[k]==='object' && 'total_roi' in a[k]; });
+      if(names.length && tt>0){
+        out.ring = names.map(function(n){
+          return { k:n, roi: a[n].total_roi / tt, win: a[n].total_hands_won / Math.max(1,a[n].total_hands_played) * 100 };
+        });
+        out.meta.avaTables = tt;
+        var [ad, as_, aa, adepth] = avaPick.key.split('|');
+        out.meta.avaConfig = ad + ' · ' + adepth + ' stack';
+        if(!out.strategies.length){ out.strategies = names; out.labels = names.map(abbrev); }
+      }
+    }
+
+    // --- Parameter sweeps: most recent session per param name ---
+    var sweepSessions = sessions.filter(function(s){ return s.type==='param_sweep'; });
+    sweepSessions.forEach(function(s){
+      var r = s.results;
+      if(!r || !r.param_name || !r.data_points) return;
+      out.sweeps[r.param_name] = r.data_points.map(function(p){
+        return [p.value, p.avg_net_roi, p.std_dev_roi];
+      });
+      out.meta.sweepTablesPerPoint = s.config ? s.config.num_tables : null;
+    });
+
+    return out;
+  }
+
+  function loadData(){
+    var candidates = ['./simulation_stats.json','../simulation_stats.json'];
+    var i = 0;
+    function tryNext(){
+      if(i>=candidates.length) return Promise.resolve(null);
+      var url = candidates[i++];
+      return fetch(url, {cache:'no-store'})
+        .then(function(res){ return res.ok ? res.json() : null; })
+        .then(function(raw){ return raw ? transform(raw) : tryNext(); })
+        .catch(function(){ return tryNext(); });
+    }
+    return tryNext();
+  }
 
   // per-strategy categorical colors (distinct on both themes)
   var COLORS = {
@@ -315,28 +396,37 @@
     Math.round(A[0]+(B[0]-A[0])*t)+","+Math.round(A[1]+(B[1]-A[1])*t)+","+Math.round(A[2]+(B[2]-A[2])*t)+")"; }
 
   // ---------------------------------------------------------------- FACTS
-  (function(){
+  function drawFacts(){
     var f=document.getElementById("facts");
-    if(!f) return;
-    var hands = (DATA.meta.h2h_games_per_pair*28*120 + DATA.meta.ava_tables*200);
-    var items=[
-      [ (hands>=1e6? (hands/1e6).toFixed(1)+"M" : Math.round(hands/1e3)+"k"), "hands simulated"],
-      [ (DATA.strategies?DATA.strategies.length:0), "strategy archetypes"],
-      [ "8→2", "players per table"],
-      [ "0", "human intervention"]
-    ];
+    if(!f) return; clear(f);
+    var items;
+    if(!DATA.strategies.length && !DATA.meta.sessionsLogged){
+      items = [["—","no simulation data yet"]];
+    } else {
+      items = [
+        [ DATA.strategies.length || "—", "strategy archetypes"],
+        [ DATA.meta.h2hGamesPerPair!=null ? DATA.meta.h2hGamesPerPair : "—", "H2H games / pair"],
+        [ DATA.meta.avaTables!=null ? DATA.meta.avaTables.toLocaleString() : "—", "full-ring tables"],
+        [ DATA.meta.sessionsLogged!=null ? DATA.meta.sessionsLogged : "—", "sim sessions logged"]
+      ];
+    }
     items.forEach(function(it){
       var d=document.createElement("div"); d.className="fact";
       d.innerHTML='<div class="n mono">'+it[0]+'</div><div class="l">'+it[1]+'</div>';
       f.appendChild(d);
     });
-  })();
+  }
 
   // ---------------------------------------------------------------- HEATMAP
   function drawHeatmap(){
     var host=document.getElementById("heatmap"); if(!host) return; clear(host);
     var L=DATA.labels, M=DATA.winMatrix;
-    if(!L||!M||!M.length){ host.innerHTML='<div class="empty">No matchup data.</div>'; return; }
+    var note0=document.getElementById("matrix-note"), cap0=document.getElementById("matrix-cap");
+    if(!L||!M||!M.length){
+      host.innerHTML='<div class="empty">No head-to-head data yet — run the H2H benchmark to populate this chart.</div>';
+      if(note0) note0.textContent=""; if(cap0) cap0.textContent="";
+      return;
+    }
     var n=L.length, cell=Math.max(34,Math.min(50, Math.floor((880-90)/n))), padL=92, padT=64;
     var W=padL+n*cell+14, H=padT+n*cell+40;
     var s=svg(W,H);
@@ -379,9 +469,10 @@
     }
     host.appendChild(s);
     var note=document.getElementById("matrix-note");
-    if(note) note.textContent=DATA.meta.h2h_games_per_pair+" games/pair";
+    if(note) note.textContent = DATA.meta.h2hGamesPerPair!=null
+      ? ("~"+DATA.meta.h2hGamesPerPair+" games/pair · "+(DATA.meta.h2hConfig||"")) : "";
     var cap=document.getElementById("matrix-cap");
-    if(cap) cap.innerHTML="Read a cell as “row beats column.” The <b>Maniac</b> row is green across the board — it beats every other style heads-up. The <b>Nit</b> row is nearly all red.";
+    if(cap) cap.innerHTML="Read a cell as “row beats column.” Hover a cell for the exact win rate.";
   }
 
   // ---------------------------------------------------------------- REPLICATOR
@@ -410,13 +501,18 @@
     return {idx:idx, hist:hist};
   }
 
-  var ecoState={active:[0,1,2,3,4,5,6,7]};
+  var ecoState={active:[]};
   function drawEco(animate){
     var host=document.getElementById("ecochart"); if(!host) return; clear(host);
     var M=DATA.winMatrix;
-    if(!M||!M.length){ host.innerHTML='<div class="empty">No matchup data.</div>'; return; }
+    var capE=document.getElementById("eco-cap"), wlE=document.getElementById("eco-winner");
+    if(!M||!M.length){
+      host.innerHTML='<div class="empty">No head-to-head data yet — evolution needs the H2H matrix above.</div>';
+      if(capE) capE.textContent=""; if(wlE) wlE.textContent="";
+      return;
+    }
     if(ecoState.active.length<2){ host.innerHTML='<div class="empty">Keep at least two species in play.</div>';
-      var wl=document.getElementById("eco-winner"); if(wl) wl.textContent=""; return; }
+      if(wlE) wlE.textContent=""; return; }
     var res=replicator(ecoState.active), hist=res.hist, idx=res.idx, GEN=hist.length-1;
     var W=880,H=360,padL=8,padR=118,padT=14,padB=30;
     var iw=W-padL-padR, ih=H-padT-padB;
@@ -505,7 +601,12 @@
   function drawBars(){
     var host=document.getElementById("barchart"); if(!host) return; clear(host);
     var R=DATA.ring;
-    if(!R||!R.length){ host.innerHTML='<div class="empty">No full-ring data.</div>'; return; }
+    var cap0=document.getElementById("ring-cap");
+    if(!R||!R.length){
+      host.innerHTML='<div class="empty">No full-ring data yet — run the all-vs-all benchmark to populate this chart.</div>';
+      if(cap0) cap0.textContent="";
+      return;
+    }
     var rows=R.slice().sort(function(a,b){return b.roi-a.roi;});
     var W=880,rowH=40,padL=118,padR=20,padT=14,padB=28;
     var H=padT+rows.length*rowH+padB, iw=W-padL-padR;
@@ -536,16 +637,22 @@
     }
     host.appendChild(s);
     var cap=document.getElementById("ring-cap");
-    if(cap) cap.innerHTML="Net profit per table as a fraction of the buy-in, across "+DATA.meta.ava_tables.toLocaleString()+" tables. Positive = winning player.";
+    if(cap) cap.innerHTML="Net profit per table as a fraction of the buy-in, across "+
+      (DATA.meta.avaTables ? DATA.meta.avaTables.toLocaleString()+" tables" : "the recorded tables")+
+      " ("+(DATA.meta.avaConfig||"")+"). Positive = winning player.";
   }
 
   // ---------------------------------------------------------------- SWEEPS
   function drawSweep(host,series,title){
     clear(host);
-    if(!series||!series.length){ host.innerHTML='<div class="empty">No sweep data.</div>'; return; }
+    if(!series||!series.length){
+      host.innerHTML='<div class="empty">No '+title.toLowerCase()+' sweep yet — run a param sweep to populate this chart.</div>';
+      return;
+    }
     var W=430,H=300,padL=44,padR=14,padT=30,padB=40, iw=W-padL-padR, ih=H-padT-padB;
     var ys=series.map(function(p){return p[1];});
-    var band=series.map(function(p){return p[2]/Math.sqrt(50);}); // SE
+    var n = DATA.meta.sweepTablesPerPoint || 1; // unknown sample size -> show full SD, not a fabricated SE
+    var band=series.map(function(p){return p[2]/Math.sqrt(n);});
     var lo=Math.min.apply(null,series.map(function(p,i){return p[1]-band[i];}));
     var hi=Math.max.apply(null,series.map(function(p,i){return p[1]+band[i];}));
     lo=Math.min(lo,-0.2); hi=Math.max(hi,0.2);
@@ -597,25 +704,42 @@
     });
     if(innerWidth<560) wrap.style.gridTemplateColumns="1fr";
     var cap=document.getElementById("sweep-cap");
-    if(cap) cap.innerHTML="Each point is one parameter setting; shading is the standard error. These sweeps use fewer tables per point ("+DATA.meta.sweep_note+"), so read the <b>shape</b>, not the wiggle.";
+    var hasSweep = DATA.sweeps && (DATA.sweeps.aggression || DATA.sweeps.play_range);
+    if(cap) cap.innerHTML = hasSweep
+      ? "Each point is one parameter setting; shading is the standard error"+
+        (DATA.meta.sweepTablesPerPoint ? " ("+DATA.meta.sweepTablesPerPoint+" tables/point)" : "")+
+        ". Read the <b>shape</b>, not every wiggle."
+      : "";
   }
 
   // ---------------------------------------------------------------- METHOD
-  (function(){
+  function drawMethodology(){
     var m=document.getElementById("methodology");
-    if(m) m.innerHTML="Method — custom Python Hold'em engine; eight fixed parameter profiles; "+
-      "heads-up matrix at "+DATA.meta.h2h_games_per_pair+" games/pair, full-ring over "+
-      DATA.meta.ava_tables.toLocaleString()+" cash tables with rebuys, "+DATA.meta.difficulty+
-      " difficulty, deep stacks. Evolution is discrete replicator dynamics on the win matrix. "+
-      "Numbers are baked into this page and swap out for a fresh <code>simulation_stats.json</code> with one edit.";
-  })();
+    if(!m) return;
+    if(!DATA.strategies.length && !DATA.meta.sessionsLogged){
+      m.innerHTML="No simulation data found. This page reads <code>simulation_stats.json</code> "+
+        "(written by <code>core/simulation_stats.py</code>) from alongside itself or the project "+
+        "root — run the H2H, all-vs-all, or param-sweep benchmarks to populate it, then reload.";
+      return;
+    }
+    var parts=["Method — custom Python Hold'em engine; fixed parameter profiles."];
+    if(DATA.meta.h2hGamesPerPair!=null) parts.push("Heads-up matrix: ~"+DATA.meta.h2hGamesPerPair+" games/pair ("+(DATA.meta.h2hConfig||"")+").");
+    if(DATA.meta.avaTables!=null) parts.push("Full ring: "+DATA.meta.avaTables.toLocaleString()+" cash tables with rebuys ("+(DATA.meta.avaConfig||"")+").");
+    parts.push("Evolution is discrete replicator dynamics computed live in this page from the H2H matrix.");
+    parts.push("All numbers above are read from your <code>simulation_stats.json</code> at load time — nothing is hardcoded.");
+    m.innerHTML=parts.join(" ");
+  }
 
   // ---------------------------------------------------------------- INIT
-  function renderAll(){ drawHeatmap(); drawEco(false); drawBars(); drawSweeps(); }
-  buildKnockouts();
-  renderAll();
-  // first-load animation for the eco chart
-  if(!reduce) setTimeout(function(){ drawEco(true); }, 350);
+  function renderAll(){ drawFacts(); drawHeatmap(); drawEco(false); drawBars(); drawSweeps(); drawMethodology(); }
+
+  loadData().then(function(d){
+    DATA = d || EMPTY_DATA;
+    ecoState.active = DATA.strategies.map(function(_,i){ return i; });
+    buildKnockouts();
+    renderAll();
+    if(!reduce && DATA.winMatrix.length) setTimeout(function(){ drawEco(true); }, 350);
+  });
 
   var pb=document.getElementById("eco-play");
   if(pb) pb.addEventListener("click",function(){ drawEco(true); });

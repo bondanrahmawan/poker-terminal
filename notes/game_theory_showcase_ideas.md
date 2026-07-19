@@ -89,6 +89,34 @@ Three headline numbers your solver should reproduce, each a talking point:
 
 Note on the α-family: because P1's equilibrium is a *set* of strategies, the solver may land anywhere in α ∈ [0, 1/3] for P1's Jack-bluff. That itself is a teachable point ("equilibria need not be unique — but P2's response is pinned"). P2's 1/3 numbers are unique and are the ones to headline.
 
+### Why 1/3? The indifference-principle derivations
+
+The equilibrium frequencies aren't arbitrary — they fall out of a single principle: **at equilibrium, your mixing frequencies make the opponent indifferent between their options** (if they weren't indifferent, they'd have a pure best response, and you'd be exploitable). The two headline numbers, derived in a few lines each. Convention: each player antes 1, so folding always nets −1; bet size is 1.
+
+**Derivation A — why P2 calls with Q exactly 1/3 of the time.**
+P2's call frequency must make P1's *Jack bluff* exactly break even (indifferent vs. checking).
+
+- P1 checks with J → loses the showdown either way → EV = **−1**.
+- P1 bets with J → P2 holds Q or K with equal probability. K always calls (it's the nuts). Say Q calls with probability *c*. Total call probability = ½·1 + ½·c.
+  - P2 folds: P1 wins the pot → **+1**.
+  - P2 calls: P1 loses ante + bet → **−2**.
+  - EV(bet) = (1 − P_call)(+1) + P_call(−2) = 1 − 3·P_call.
+- Indifference: 1 − 3·P_call = −1 → **P_call = 2/3** → ½ + c/2 = 2/3 → **c = 1/3**. ∎
+
+Intuition: a 1-chip bluff into a 2-chip pot risks 1 to win 2, so it profits iff it succeeds more than 1/3 of the time. Equilibrium defense makes it succeed *exactly* 1/3 of the time — no more (or bluffs print money), no less (or folds get exploited).
+
+**Derivation B — why P2 bluffs the Jack exactly 1/3 of the time (after P1 checks).**
+Mirror image: P2's bluff frequency must make P1's *Queen call* exactly break even.
+
+- P1 checked with Q, P2 bets. P2's betting range: K always (value), J with probability *b* (bluff). P2 checks back Q, so given a bet, P1's Q faces {K, J} with posterior odds 1 : b.
+- P1 folds → **−1**. P1 calls → +2 vs. the bluff (wins a 4-chip pot), −2 vs. the K.
+- EV(call) = [b/(1+b)]·(+2) + [1/(1+b)]·(−2). Indifference with −1:
+  2b − 2 = −(1 + b) → 3b = 1 → **b = 1/3**. ∎
+
+**Bonus — the modern-theory tie-in.** b = 1/3 means P2's *betting range* is {K always, J one-third of the time}, so bluffs make up (1/3)/(1 + 1/3) = **25% of the betting range**. Meanwhile P1's caller gets 3:1 pot odds (call 1 to win 3), i.e. needs exactly 25% equity to call. The bluff fraction *equals* the caller's pot-odds threshold — which is precisely the "bluff-to-value ratio" formula from modern poker theory books, for a half-pot bet. A 1940s toy game and 2020s solver doctrine give the same number; that's a great slide.
+
+(The game value −1/18 follows by summing P1's equilibrium EV over all six equally likely deals — worth verifying empirically rather than deriving by hand.)
+
 ### CFR pseudocode (vanilla, chance-sampled)
 
 ```
@@ -118,6 +146,38 @@ def average_strategy(I):
 ```
 
 Data structure: a dict `info_set_key -> (regret_sum[n_actions], strategy_sum[n_actions])`. For Kuhn that's 12 keys × 2 actions. The whole solver state is ~48 floats.
+
+### One CFR iteration by hand
+
+To make the pseudocode concrete (and to have a debugging reference when implementing), here is the very first iteration traced on one sampled deal: **P1 = Q, P2 = J**. All regrets start at 0, so regret matching returns uniform — every decision is 50/50.
+
+The tree for this deal, with expected values computed bottom-up from P1's perspective:
+
+```
+P1 "Q": check or bet                              EV = ½(0.75) + ½(1.5) = +1.125
+├─ check → P2 "J c": check or bet                 EV(P1) = ½(+1) + ½(+0.5) = +0.75
+│   ├─ check → showdown, Q > J                    P1 +1
+│   └─ bet  → P1 "Q cb": fold or call             EV = ½(−1) + ½(+2) = +0.5
+│       ├─ fold                                   P1 −1
+│       └─ call → showdown, Q > J                 P1 +2
+└─ bet  → P2 "J b": fold or call                  EV(P1) = ½(+1) + ½(+2) = +1.5
+    ├─ fold                                       P1 +1
+    └─ call → showdown, Q > J                     P1 +2
+```
+
+Regret update at each info set visited — `regret(a) = reach_opp × (EV(a) − EV(node))`, each from the acting player's own perspective (P2's payoffs are the negation of P1's):
+
+| Info set | Action EVs (actor's view) | Node EV | Regret update | What the bot just "learned" |
+|---|---|---|---|---|
+| P1 `Q` | check +0.75, bet +1.5 | +1.125 | bet **+0.375**, check −0.375 | "Betting the Q is great!" — an *overreaction* (true only because P2 held the worse card and played randomly); future deals vs. K will punish it |
+| P2 `J b` | fold −1, call −2 | −1.5 | fold **+0.25**, call −0.25 (reach ½) | With J facing a bet, fold — already the correct equilibrium play, learned in one sample |
+| P2 `J c` | check −1, bet −0.5 | −0.75 | bet **+0.125**, check −0.125 (reach ½) | Bluffing the J after a check looks good (P1 folds half the time with a better hand) — the *birth of the bluff*; later, P1's calls adapt and drive this to exactly 1/3 |
+| P1 `Q cb` | fold −1, call +2 | +0.5 | call **+0.375**, fold −0.375 (reach ¼) | Bluff-catch with the Q — correct direction, frequency to be calibrated over time |
+
+Two things worth noticing, because they preview the whole dynamic:
+
+- **Sensible poker emerges after literally one iteration** — fold J to a bet, bluff-catch with Q, try bluffing the J. Nobody told it anything; the regrets did.
+- **The overreaction at P1 `Q` is the system working as intended.** Next iteration, regret matching plays "bet Q" at 100%. On deals where P2 holds the K, that gets punished, negative regret accumulates, the strategy swings back. The *current* strategy lurches like this forever; the *average* strategy glides to equilibrium. This is exactly the current-vs-average contrast that direction #4 puts on screen.
 
 ### What to build
 
@@ -312,6 +372,27 @@ Sequenced roadmap, each phase independently shippable:
 4. **Phase 4 — Tournament + evolution** (#3). Success: matchup heatmap with variance controls; replicator-dynamics gif. Runs on the existing NLHE archetypes and/or the Kuhn bots.
 
 Each later phase also upgrades the earlier ones (Phase 3's best response is the honest convergence metric for Phase 1; Phase 4's GTO row is the payoff of Phase 1's equilibrium bot). Four phases ≈ four LinkedIn posts, escalating from "provable result" → "watch it learn" → "play against it and see your leaks" → "poker ecosystem evolution."
+
+## Presentation surface: terminal vs. web (open decision)
+
+The doc so far assumes terminal + recorded gifs. But the project now has a browser client (`web/`) and a game-theory showcase page already in progress (`showcase/poker_game_theory.html`) — so there is a real choice here, and it affects Phases 2 and 4.
+
+**Option A — terminal gifs (asciinema/terminalizer):**
+- Feed-native: autoplays in the LinkedIn feed, zero friction, nobody has to click anything.
+- The terminal aesthetic reads as authentic engineering, not a product ad.
+- But it's passive — viewers watch one pre-recorded run.
+
+**Option B — interactive web page (extend the showcase page):**
+- Regret bars with an **iteration slider** ("scrub through the AI learning to bluff"), play-against-GTO with a live leak meter (#2), evolution animation with a restart button (#4/#3).
+- "Try it yourself" is a much deeper engagement than a gif — and Kuhn CFR is small enough (~100 lines) to implement directly in browser JS, so the page can *re-solve live*, no backend needed. Alternatively: keep the solver in Python and precompute a snapshot log to static JSON; the page just plays it back. Either way it can be a static page (GitHub Pages), no `api/server.py` dependency.
+- But: LinkedIn's algorithm penalizes external links in the post body, and a link is a click most scrollers won't make.
+
+**Resolution — don't choose; structure for both:**
+1. Make the solver emit a **serializable snapshot log** (per-info-set regrets + current + average strategy, every N iterations, as JSON). This costs almost nothing in Phase 1.
+2. Terminal viz (Phase 2) and web viz both become thin *consumers of the same snapshot data* — the decision stops being architectural and becomes purely about presentation order.
+3. For the post itself, the standard playbook: **gif in the post** (stops the scroll, feed-native) **+ interactive page linked in the first comment** ("play with it yourself"). Best of both, and the algorithm penalty applies only weakly to comment links.
+
+Concrete implication for the roadmap: Phase 1 gains a "snapshot log to JSON" requirement (trivial); Phase 2 stays terminal-first; a "Phase 2b — interactive web version on the showcase page" slots in whenever it's worth the polish.
 
 ## Presentation notes (for later)
 

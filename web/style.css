@@ -14,6 +14,7 @@
   --accent: #e3b341;
   --accent-strong: #f2c14e;
   --accent-contrast: #1e1600;
+  --you: #4bc0d9;
   --pos: #4ac26b;
   --neg: #e5807f;
   --warn: #e3b341;
@@ -46,6 +47,7 @@
   --accent: #b4791a;
   --accent-strong: #9c6912;
   --accent-contrast: #ffffff;
+  --you: #0e7490;
   --pos: #1a7f37;
   --neg: #cf222e;
   --warn: #8a6100;
@@ -204,7 +206,15 @@ button:disabled { background: var(--surface-3); color: var(--text-dim); cursor: 
    the seats don't collide around the rim. */
 #seats.crowded .seat { padding: 0.3rem 0.35rem; font-size: 0.74rem; }
 #seats.crowded .seat .style { display: none; }
-.seat.you { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 2px 10px -2px var(--shadow); }
+/* Identity ring (cyan) marks your own seat; the amber "acting" ring below marks
+   whose turn it is. When it's your turn both apply, so re-assert acting's amber. */
+.seat.you { border-color: var(--you); box-shadow: 0 0 0 1px var(--you), 0 2px 10px -2px var(--shadow); }
+.seat.you.acting { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 0 14px var(--glow); }
+/* Green win ring: marks who took the pot. Persists through the between-hands
+   pause; cleared on the next hand's rotation (resetSeatStates). Declared last
+   so it beats the you/acting rings while it's on. */
+.seat.winner, .seat.you.winner { border-color: var(--pos); box-shadow: 0 0 0 2px var(--pos), 0 0 14px rgba(74, 194, 107, 0.45); }
+.bet.win { color: var(--pos); }
 .seat.folded { opacity: 0.4; }
 .seat.busted { opacity: 0.3; filter: grayscale(1); }
 .seat .name { font-weight: 600; }

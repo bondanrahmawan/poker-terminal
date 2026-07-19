@@ -283,21 +283,31 @@ function showGameOver(winner) {
   bar.appendChild(btn);
 }
 
+// Per-game visual + animation state. Cleared both on quit (newGame) and when a
+// fresh session starts, so a new table never inherits the previous game's
+// showdown reveals, win highlights, or leftover animation events — these are
+// module-level and keyed by player_id, which bots reuse deterministically.
+function resetGameState() {
+  Object.assign(S, {
+    lastSeq: -1, queue: [], animating: false, pendingView: null, skip: false,
+  });
+  handWinnings = {};
+  handReveals = {};
+}
+
 function newGame() {
   localStorage.removeItem("poker.gameId");
   S.closing = true; // deliberate close — onclose must not schedule a reconnect
   if (S.ws) { try { S.ws.close(); } catch (e) { /* already closed */ } }
   Object.assign(S, {
-    gameId: null, view: null, ws: null, phase: "menu",
-    lastSeq: -1, queue: [], animating: false, pendingView: null, skip: false,
-    closing: false,
+    gameId: null, view: null, ws: null, phase: "menu", closing: false,
   });
   wsRetryDelay = 1000;
-  handWinnings = {};
-  handReveals = {};
+  resetGameState();
   resetSessionMeta();
   el("history").innerHTML = "";
   el("caption").textContent = "";
+  clearHole(); // drop the previous game's hole cards + hand name from the DOM
   document.title = "Poker Terminal";
   render();
 }
@@ -326,6 +336,7 @@ async function pump() {
     }
     const line = appendHistory(ev);           // every event (tracks winnings/reveals, returns caption line)
     if (ev.type === "hole_cards_shown") revealSeat(ev.data.player_id);
+    if (ev.type === "pot_awarded") markWinnerSeat(ev.data.player_id);
     if (line) showCaption(ev, line);          // banner + seat highlight
     // No caption → nothing to read → no dwell (kills hand-start dead air).
     await sleep(S.skip || !line ? 0 : dwellFor(ev));
@@ -409,13 +420,18 @@ function setActing(pid) {
 // (which re-renders everyone active) lands. Busted seats stay dimmed.
 function resetSeatStates() {
   el("seats").querySelectorAll(".seat").forEach((s) => {
-    s.classList.remove("folded", "acting");
+    s.classList.remove("folded", "acting", "winner");
     // Also wipe the previous hand's "bet N" chip text — otherwise a showdown/
     // all-in bet that never collapsed to zero lingers through the animation.
     const bet = s.querySelector(".bet");
-    if (bet) bet.textContent = "";
+    if (bet) { bet.textContent = ""; bet.classList.remove("win"); }
     // Drop stale position/ALL-IN badges too; the fresh view re-adds them.
     s.querySelectorAll(".name .badge").forEach((b) => b.remove());
+    // Wipe the last hand's showdown reveals — the fresh view doesn't re-render
+    // seats until the new hand's animation drains, so without this the previous
+    // hand's face-up cards linger through the ante/blind rotation.
+    const cards = s.querySelector(".seat-cards");
+    if (cards) cards.innerHTML = "";
   });
 }
 
@@ -1298,6 +1314,7 @@ el("settings-form").addEventListener("submit", async (e) => {
   S.gameId = data.game_id;
   S.view = data.view;
   localStorage.setItem("poker.gameId", S.gameId);
+  resetGameState();  // clear any prior game's reveals / win highlights / queued events
   resetSessionMeta();
   S.phase = "table";
   render();
@@ -1373,6 +1390,8 @@ function renderSeats(v) {
 
     const cls = ["seat"];
     if (p.is_you) cls.push("you");
+    const won = handWinnings[p.player_id];
+    if (won) cls.push("winner");
     const busted = p.chips === 0 && !p.is_active && !p.is_all_in;
     if (busted) cls.push("busted");
     else if (!p.is_active) cls.push("folded");
@@ -1393,7 +1412,7 @@ function renderSeats(v) {
       `<div class="name">${esc(p.name)} ${badges.join(" ")}</div>` +
       (p.style ? `<div class="style">${esc(p.style)}</div>` : "") +
       `<div class="chips">${p.chips}</div>` +
-      `<div class="bet">${p.bet_this_round ? "bet " + p.bet_this_round : ""}</div>` +
+      `<div class="bet${won ? " win" : ""}">${won ? "+" + won.amount : p.bet_this_round ? "bet " + p.bet_this_round : ""}</div>` +
       `<div class="seat-cards">${reveal ? revealHTML(reveal) : ""}</div>`;
     seats.appendChild(div);
   });
@@ -1408,6 +1427,18 @@ function revealHTML(r) {
   }).join("");
   return `<div class="mc-row">${cards}</div>` +
     (r.hand_name ? `<div class="mc-name">${esc(r.hand_name)}</div>` : "");
+}
+
+// Green win ring + amount on the winner's seat the moment their "wins …"
+// caption animates (mirrors revealSeat); renderSeats re-derives both from
+// handWinnings when the held-back view lands, so they survive the re-render.
+function markWinnerSeat(pid) {
+  const seat = el("seats").querySelector(`.seat[data-pid="${pid}"]`);
+  if (!seat) return;
+  seat.classList.add("winner");
+  const w = handWinnings[pid];
+  const bet = seat.querySelector(".bet");
+  if (bet && w) { bet.textContent = "+" + w.amount; bet.classList.add("win"); }
 }
 
 // Flip a player's cards up on their seat the moment their "shows …" caption
@@ -1747,6 +1778,7 @@ el("menu-list").addEventListener("click", (e) => {
   else if (btn.dataset.menu === "tstats") showStatsView();
   else if (btn.dataset.menu === "sstats") showSimStats();
   else if (btn.dataset.menu === "sim") showSim();
+  else if (btn.dataset.menu === "showcase") window.open("/showcase/poker_game_theory.html", "_blank");
   else if (btn.dataset.menu === "help") openHelp();
 });
 el("settings-back").addEventListener("click", showMenu);
